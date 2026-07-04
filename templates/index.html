@@ -179,39 +179,48 @@
         <div id="reader"></div>
 
         <div class="history-card">
-            <h3 style="margin-top:0">Recent Activity</h3>
-            <div class="table-wrapper">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Item</th>
-                            <th>Status</th>
-                            <th>User</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for scan in scans %}
-                        <tr>
-                            <td><strong>{{ scan.code }}</strong></td>
-                            <td>
-                                <span class="badge status-{{ scan.status.lower().replace(' ', '') }}">
-                                    {{ scan.status }}
-                                </span>
-                            </td>
-                            <td>
-                                {% if scan.person_name %}
-                                    {{ scan.person_name }} <br>
-                                    <small style="color:var(--gray)">ID: {{ scan.person_id }}</small>
-                                {% else %}
-                                    -
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+    <h3 style="margin-top:0">Recent Activity</h3>
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Status</th>
+                    <th>User Details</th>
+                    <th>Return Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for scan in scans %}
+                <tr>
+                    <td><strong>{{ scan.code }}</strong></td>
+                    <td>
+                        <span class="badge status-{{ scan.status.lower().replace(' ', '') }}">
+                            {{ scan.status }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if scan.person_name %}
+                            <div style="font-weight: 500;">{{ scan.person_name }}</div>
+                            <small style="color:var(--gray)">ID: {{ scan.person_id }}</small>
+                        {% else %}
+                            <span style="color:var(--gray)">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if scan.return_date %}
+                            <span style="color: var(--primary); font-weight: 500;">{{ scan.return_date }}</span>
+                        {% else %}
+                            <span style="color:var(--gray)">-</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
     </div>
 
     <!-- Modal -->
