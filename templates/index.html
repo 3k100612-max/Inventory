@@ -3,25 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inventory Manager</title>
+    <title>Inventory Manager Pro</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: sans-serif; background: #f0f2f5; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-        #reader { width: 100%; max-width: 500px; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .history-section { margin-top: 30px; width: 100%; max-width: 600px; }
-        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
-        th { background: #34495e; color: white; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        #reader { width: 100%; max-width: 500px; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        
+        /* Modal Styles */
+        #mainModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-content { background: white; padding: 25px; border-radius: 15px; width: 90%; max-width: 400px; }
+        
+        .step { display: none; }
+        .step.active { display: block; }
 
-        /* Modal */
-        #statusModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center; }
-        .modal-content { background: white; padding: 25px; border-radius: 12px; width: 90%; max-width: 350px; text-align: center; }
-        .btn { display: block; width: 100%; padding: 12px; margin: 8px 0; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; color: white; }
-        .in-use { background: #3498db; }
-        .in-stock { background: #2ecc71; }
-        .loaned { background: #f1c40f; color: #333; }
-        .maintenance { background: #9b59b6; }
-        .retired { background: #e74c3c; }
+        input { width: 90%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; }
+        .btn { width: 100%; padding: 12px; margin: 5px 0; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        .btn-primary { background: #3498db; color: white; }
+        .btn-success { background: #2ecc71; color: white; }
+        
+        table { width: 100%; max-width: 700px; border-collapse: collapse; margin-top: 20px; background: white; }
+        th, td { padding: 12px; border-bottom: 1px solid #eee; text-align: left; }
     </style>
 </head>
 <body>
@@ -29,56 +30,103 @@
     <h1>Inventory Scanner</h1>
     <div id="reader"></div>
 
-    <div class="history-section">
-        <h3>Recent Scans</h3>
+    <!-- History Table -->
+    <div style="width: 100%; max-width: 700px; margin-top: 30px;">
+        <h3>Recent Activity</h3>
         <table>
-            <thead>
-                <tr><th>Code</th><th>Status</th><th>Time</th></tr>
-            </thead>
+            <thead><tr><th>Item</th><th>Status</th><th>User</th><th>Return Date</th></tr></thead>
             <tbody>
                 {% for scan in scans %}
                 <tr>
                     <td>{{ scan.code }}</td>
-                    <td>{{ scan.status }}</td>
-                    <td>{{ scan.timestamp.strftime('%H:%M') }}</td>
+                    <td><b>{{ scan.status }}</b></td>
+                    <td>{{ scan.person_name or '-' }} ({{ scan.person_id or '-' }})</td>
+                    <td>{{ scan.return_date or '-' }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 
-    <!-- Selection Modal -->
-    <div id="statusModal">
+    <!-- Multi-Step Modal -->
+    <div id="mainModal">
         <div class="modal-content">
-            <h2 id="display-code"></h2>
-            <p>Select Item Status:</p>
-            <button class="btn in-use" onclick="sendData('In Use')">In Use</button>
-            <button class="btn in-stock" onclick="sendData('In Stock')">In Stock</button>
-            <button class="btn loaned" onclick="sendData('Loaned')">Loaned</button>
-            <button class="btn maintenance" onclick="sendData('In Maintenance')">In Maintenance</button>
-            <button class="btn retired" onclick="sendData('Retired')">Retired</button>
+            <h2 id="modal-title">Scanning...</h2>
+
+            <!-- STEP 1: Select Status -->
+            <div id="step-status" class="step active">
+                <p>Select Status for <span id="target-code"></span>:</p>
+                <button class="btn btn-primary" onclick="goToDetails('In Use')">In Use</button>
+                <button class="btn btn-primary" onclick="goToDetails('In Maintenance')">In Maintenance</button>
+                <button class="btn btn-primary" onclick="goToDetails('Retired')">Retired</button>
+                <button class="btn btn-success" onclick="goToDetails('Loaned')">Loaned</button>
+                <button class="btn" style="background:#bdc3c7" onclick="submitData('In Stock')">In Stock</button>
+            </div>
+
+            <!-- STEP 2: Enter Details -->
+            <div id="step-details" class="step">
+                <p id="details-instruction"></p>
+                <input type="text" id="input-name" placeholder="Full Name">
+                <input type="text" id="input-id" placeholder="ID Number">
+                
+                <div id="loan-only-fields" style="display:none;">
+                    <label>Return Date:</label>
+                    <input type="date" id="input-date">
+                </div>
+
+                <button class="btn btn-success" onclick="submitData()">Confirm & Save</button>
+                <button class="btn" onclick="resetModal()">Cancel</button>
+            </div>
         </div>
     </div>
 
     <script>
         let scanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 });
         let currentCode = "";
+        let selectedStatus = "";
 
         function onScanSuccess(decodedText) {
             currentCode = decodedText;
             scanner.pause();
-            document.getElementById('display-code').innerText = decodedText;
-            document.getElementById('statusModal').style.display = 'flex';
+            document.getElementById('target-code').innerText = decodedText;
+            document.getElementById('mainModal').style.display = 'flex';
+            showStep('step-status');
         }
 
-        function sendData(status) {
+        function showStep(stepId) {
+            document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+            document.getElementById(stepId).classList.add('active');
+        }
+
+        function goToDetails(status) {
+            selectedStatus = status;
+            showStep('step-details');
+            document.getElementById('details-instruction').innerText = `Enter details for ${status}`;
+            
+            // Show date field ONLY if Loaned
+            document.getElementById('loan-only-fields').style.display = (status === 'Loaned') ? 'block' : 'none';
+        }
+
+        function submitData(statusOverride) {
+            const status = statusOverride || selectedStatus;
+            const payload = {
+                code: currentCode,
+                status: status,
+                person_name: document.getElementById('input-name').value,
+                person_id: document.getElementById('input-id').value,
+                return_date: document.getElementById('input-date').value
+            };
+
             fetch('/scanned', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code: currentCode, status: status })
-            }).then(() => {
-                window.location.reload(); // Refresh to update table
-            });
+                body: JSON.stringify(payload)
+            }).then(() => window.location.reload());
+        }
+
+        function resetModal() {
+            document.getElementById('mainModal').style.display = 'none';
+            scanner.resume();
         }
 
         scanner.render(onScanSuccess);
