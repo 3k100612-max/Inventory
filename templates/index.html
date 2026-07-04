@@ -2,121 +2,78 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
-    <title>High-Speed BI Scanner</title>
-    <!-- Optimized Scanning Engine -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asset Scanner</title>
+    <!-- Load the Scanning Library -->
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        :root { --primary: #2563eb; --success: #22c55e; }
-        body { font-family: -apple-system, sans-serif; margin: 0; background: #f1f5f9; }
-        
-        /* The Scanner Container */
-        #reader { 
-            width: 100%; 
-            max-width: 500px; 
-            margin: auto; 
-            background: #000;
-            overflow: hidden;
-            border-bottom: 4px solid var(--primary);
-        }
-
-        /* UI Elements */
-        .controls { padding: 20px; text-align: center; }
-        .status-badge { 
-            display: inline-block; padding: 6px 12px; border-radius: 20px;
-            background: #dbeafe; color: var(--primary); font-weight: 600; font-size: 0.8em;
-            margin-bottom: 10px;
-        }
-
-        /* Modal for Data Entry */
-        .modal { 
-            display: none; position: fixed; z-index: 100; top: 0; left: 0; 
-            width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); 
-        }
-        .modal-content { 
-            background: white; margin: 15% auto; padding: 25px; 
-            width: 85%; max-width: 400px; border-radius: 15px; 
-        }
-        
-        select, input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 16px; box-sizing: border-box; }
-        button { width: 100%; padding: 15px; background: var(--primary); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        #reader { width: 100%; max-width: 500px; border: 1px solid #ccc; border-radius: 8px; }
+        #result-message { margin-top: 20px; padding: 10px; border-radius: 5px; display: none; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
     </style>
 </head>
 <body>
-
+    <h1>Asset Log Scanner</h1>
+    
+    <!-- Scanner Container -->
     <div id="reader"></div>
-
-    <div class="controls">
-        <div class="status-badge">HARDWARE ACCELERATION ACTIVE</div>
-        <h2>Asset Inventory</h2>
-        <p>Point camera at any barcode or QR code</p>
-    </div>
-
-    <!-- Data Entry Popup -->
-    <div id="formModal" class="modal">
-        <div class="modal-content">
-            <h3 id="scannedIdLabel" style="color:var(--primary); font-family:monospace;"></h3>
-            <label>Asset Status</label>
-            <select id="status">
-                <option value="Returned">Returned</option>
-                <option value="Released">Released</option>
-                <option value="In-Repair">Repair</option>
-            </select>
-            <button onclick="saveToPostgres()">Submit to Database</button>
-        </div>
-    </div>
+    
+    <!-- Status Message -->
+    <div id="result-message"></div>
 
     <script>
-        let currentCode = "";
-        const html5QrCode = new Html5Qrcode("reader");
+        const resultMsg = document.getElementById('result-message');
 
-        // 1. FAST CONFIGURATION
-        const config = { 
-            fps: 25,               // High frame rate for instant capture
-            qrbox: { width: 250, height: 150 }, // Focused scan area (faster processing)
-            aspectRatio: 1.0, 
-            experimentalFeatures: {
-                useBarCodeDetectorIfSupported: true // CRITICAL: Uses phone's specialized chip
-            }
-        };
+        function showMessage(text, isSuccess) {
+            resultMsg.innerText = text;
+            resultMsg.className = isSuccess ? 'success' : 'error';
+            resultMsg.style.display = 'block';
+            // Hide message after 3 seconds
+            setTimeout(() => { resultMsg.style.display = 'none'; }, 3000);
+        }
 
-        // 2. START SCANNING
-        html5QrCode.start({ facingMode: "environment" }, config, (decodedText) => {
-            // Instant Feedback
-            if (navigator.vibrate) navigator.vibrate(100); 
-            new Audio('https://assets.mixkit.co/sfx/preview/mixkit-software-interface-start-2574.mp3').play();
+        async function onScanSuccess(decodedText, decodedResult) {
+            // Stop scanning temporarily to avoid multiple logs for one scan
+            html5QrcodeScanner.clear();
 
-            currentCode = decodedText;
-            document.getElementById('scannedIdLabel').innerText = "Asset: " + decodedText;
-            document.getElementById('formModal').style.display = "block";
+            console.log(`Scan Result: ${decodedText}`);
             
-            // Pause to prevent double-scans
-            html5QrCode.pause(true); 
-        });
-
-        // 3. SEND TO PYTHON -> POSTGRES
-        async function saveToPostgres() {
-            const payload = {
-                asset_id: currentCode,
-                status: document.getElementById('status').value,
-                type: "General"
-            };
-
+            // Send data to Flask API
             try {
                 const response = await fetch('/api/log', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify({
+                        asset_id: decodedText,
+                        status: "Scanned",
+                        type: "Barcode/QR",
+                        accessory_detail: "Automatically logged via camera scanner"
+                    })
                 });
 
+                const result = await response.json();
                 if (response.ok) {
-                    document.getElementById('formModal').style.display = "none";
-                    html5QrCode.resume(); // Ready for next item immediately
+                    showMessage(`Successfully Logged: ${decodedText}`, true);
+                } else {
+                    showMessage(`Error: ${result.message}`, false);
                 }
             } catch (err) {
-                alert("Database Sync Error");
+                showMessage("Failed to connect to server", false);
             }
+
+            // Restart scanner after 2 seconds
+            setTimeout(() => {
+                html5QrcodeScanner.render(onScanSuccess);
+            }, 2000);
         }
+
+        // Initialize Scanner
+        const html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader", { fps: 10, qrbox: 250 }
+        );
+        html5QrcodeScanner.render(onScanSuccess);
     </script>
 </body>
 </html>
