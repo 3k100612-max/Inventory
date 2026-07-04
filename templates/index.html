@@ -2,131 +2,280 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inventory Manager</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Inventory Fluid Pro</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f8f9fa; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-        #reader { width: 100%; max-width: 500px; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1); background: white; }
-        h1 { color: #2c3e50; margin-bottom: 20px; }
+        :root {
+            --primary: #4361ee;
+            --success: #2ec4b6;
+            --warning: #ff9f1c;
+            --danger: #e71d36;
+            --dark: #011627;
+            --light: #fdfffc;
+            --gray: #8d99ae;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f8f9fa;
+            color: var(--dark);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        /* Fluid Header */
+        header {
+            width: 100%;
+            padding: 20px;
+            text-align: center;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+
+        header h1 { margin: 0; font-size: 1.5rem; font-weight: 800; color: var(--primary); }
+
+        /* Scanner Card */
+        .container {
+            width: 95%;
+            max-width: 600px;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        #reader {
+            width: 100%;
+            border: none !important;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            background: white;
+        }
+
+        /* Fluid Table */
+        .history-card {
+            background: white;
+            margin-top: 25px;
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            width: 100%;
+        }
+
+        .table-wrapper {
+            overflow-x: auto; /* Makes table fluid on mobile */
+            -webkit-overflow-scrolling: touch;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 500px;
+        }
+
+        th {
+            text-align: left;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--gray);
+            padding: 10px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        td { padding: 15px 10px; border-bottom: 1px solid #f8f9fa; font-size: 0.95rem; }
+
+        /* Status Badges */
+        .badge {
+            padding: 5px 10px;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            display: inline-block;
+        }
+        .status-instock { background: #e7f9f7; color: var(--success); }
+        .status-loaned { background: #fff5e6; color: var(--warning); }
+        .status-inuse { background: #eef2ff; color: var(--primary); }
+        .status-retired { background: #ffebee; color: var(--danger); }
+
+        /* Glassmorphism Modal */
+        #mainModal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(1, 22, 39, 0.4);
+            backdrop-filter: blur(8px); /* Blur effect */
+            -webkit-backdrop-filter: blur(8px);
+            z-index: 1000;
+            align-items: flex-end; /* Slide from bottom on mobile */
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: white;
+            width: 100%;
+            max-width: 500px;
+            padding: 30px;
+            border-radius: 30px 30px 0 0; /* Rounded top corners */
+            box-shadow: 0 -10px 40px rgba(0,0,0,0.2);
+            animation: slideUp 0.3s ease-out;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+        }
+
+        /* Fluid Buttons */
+        .btn-group { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
         
-        /* Modal Styles */
-        #mainModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 1000; align-items: center; justify-content: center; }
-        .modal-content { background: white; padding: 30px; border-radius: 20px; width: 90%; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
-        .step { display: none; }
-        .step.active { display: block; }
+        .btn {
+            padding: 16px;
+            border: none;
+            border-radius: 15px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+        }
 
-        /* Form Elements */
-        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; box-sizing: border-box; }
-        .btn { width: 100%; padding: 14px; margin: 8px 0; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: transform 0.1s; }
-        .btn:active { transform: scale(0.98); }
-        .btn-status { background: #3498db; color: white; }
-        .btn-loan { background: #f39c12; color: white; }
-        .btn-stock { background: #2ecc71; color: white; }
-        .btn-confirm { background: #27ae60; color: white; margin-top: 15px; }
-        .btn-cancel { background: #e74c3c; color: white; }
+        .btn-main { background: var(--primary); color: white; }
+        .btn-outline { background: #f0f2f5; color: var(--dark); }
+        .btn:active { transform: scale(0.96); opacity: 0.8; }
 
-        /* Table Styles */
-        .history { width: 100%; max-width: 800px; margin-top: 40px; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 15px; text-align: left; border-bottom: 1px solid #f0f0f0; }
-        th { background: #34495e; color: white; font-weight: 500; }
-        tr:last-child td { border-bottom: none; }
-        .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.85em; font-weight: bold; text-transform: uppercase; }
+        input {
+            width: 100%;
+            padding: 15px;
+            margin: 10px 0;
+            border: 2px solid #f0f2f5;
+            border-radius: 12px;
+            font-size: 1rem;
+            box-sizing: border-box;
+            outline: none;
+        }
+        input:focus { border-color: var(--primary); }
+
+        @media (min-width: 600px) {
+            #mainModal { align-items: center; }
+            .modal-content { border-radius: 25px; width: 90%; }
+            .btn-group { flex-direction: row; flex-wrap: wrap; }
+            .btn-group .btn { flex: 1; min-width: 140px; }
+        }
     </style>
 </head>
 <body>
 
-    <h1>Inventory Scanner</h1>
-    <div id="reader"></div>
+    <header>
+        <h1>Inventory Flow</h1>
+    </header>
 
-    <div class="history">
-        <table>
-            <thead>
-                <tr>
-                    <th>Item ID</th>
-                    <th>Status</th>
-                    <th>User Detail</th>
-                    <th>Return</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for scan in scans %}
-                <tr>
-                    <td>{{ scan.code }}</td>
-                    <td><span class="status-badge">{{ scan.status }}</span></td>
-                    <td>
-                        {% if scan.person_name %}
-                            {{ scan.person_name }} <br> <small style="color:#7f8c8d">ID: {{ scan.person_id }}</small>
-                        {% else %}
-                            -
-                        {% endif %}
-                    </td>
-                    <td>{{ scan.return_date or '-' }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <div class="container">
+        <div id="reader"></div>
+
+        <div class="history-card">
+            <h3 style="margin-top:0">Recent Activity</h3>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th>Status</th>
+                            <th>User</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for scan in scans %}
+                        <tr>
+                            <td><strong>{{ scan.code }}</strong></td>
+                            <td>
+                                <span class="badge status-{{ scan.status.lower().replace(' ', '') }}">
+                                    {{ scan.status }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if scan.person_name %}
+                                    {{ scan.person_name }} <br>
+                                    <small style="color:var(--gray)">ID: {{ scan.person_id }}</small>
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 
-    <!-- Multi-Step Modal -->
+    <!-- Modal -->
     <div id="mainModal">
         <div class="modal-content">
-            <h2 id="modal-code-display" style="margin-top:0; color:#2980b9;"></h2>
-
-            <!-- STEP 1: Select Status -->
-            <div id="step-status" class="step active">
-                <p>What is the status of this item?</p>
-                <button class="btn btn-status" onclick="goToDetails('In Use')">In Use</button>
-                <button class="btn btn-status" onclick="goToDetails('In Maintenance')">In Maintenance</button>
-                <button class="btn btn-status" onclick="goToDetails('Retired')">Retired</button>
-                <button class="btn btn-loan" onclick="goToDetails('Loaned')">Loaned</button>
-                <button class="btn btn-stock" onclick="submitData('In Stock')">In Stock (Quick Save)</button>
-                <button class="btn btn-cancel" onclick="closeModal()">Cancel</button>
+            <h2 id="modal-code-display" style="margin-top:0"></h2>
+            
+            <!-- Step 1 -->
+            <div id="step-status" class="step">
+                <p style="color:var(--gray)">Select the new status for this item:</p>
+                <div class="btn-group">
+                    <button class="btn btn-main" onclick="goToDetails('In Use')">In Use</button>
+                    <button class="btn btn-main" onclick="goToDetails('Loaned')" style="background:var(--warning)">Loaned</button>
+                    <button class="btn btn-main" onclick="goToDetails('In Maintenance')" style="background:var(--gray)">Repair</button>
+                    <button class="btn btn-outline" onclick="submitData('In Stock')">In Stock</button>
+                    <button class="btn btn-outline" onclick="closeModal()" style="color:var(--danger)">Cancel</button>
+                </div>
             </div>
 
-            <!-- STEP 2: Enter Details -->
-            <div id="step-details" class="step">
-                <p id="details-title" style="font-weight:bold;"></p>
-                <input type="text" id="input-name" placeholder="Person's Full Name">
-                <input type="text" id="input-id" placeholder="Employee/ID Number">
+            <!-- Step 2 -->
+            <div id="step-details" class="step" style="display:none">
+                <p id="details-title" style="font-weight:bold"></p>
+                <input type="text" id="input-name" placeholder="Full Name">
+                <input type="text" id="input-id" placeholder="ID Number">
                 
-                <div id="loan-fields" style="display:none; margin-top:10px;">
-                    <label style="font-size: 0.9em; color: #7f8c8d;">Expected Return Date:</label>
+                <div id="loan-fields" style="display:none">
+                    <label style="font-size:0.8rem; color:var(--gray)">Return Date</label>
                     <input type="date" id="input-date">
                 </div>
 
-                <button class="btn btn-confirm" onclick="submitData()">Save to Database</button>
-                <button class="btn btn-cancel" onclick="showStep('step-status')">Back</button>
+                <div class="btn-group">
+                    <button class="btn btn-main" onclick="submitData()">Confirm & Save</button>
+                    <button class="btn btn-outline" onclick="showStep('step-status')">Back</button>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
-        let scanner = new Html5QrcodeScanner("reader", { fps: 15, qrbox: 250 });
+        let scanner = new Html5QrcodeScanner("reader", { 
+            fps: 20, 
+            qrbox: (width, height) => { return { width: width * 0.7, height: width * 0.7 } }
+        });
+        
         let currentCode = "";
         let selectedStatus = "";
 
         function onScanSuccess(decodedText) {
             currentCode = decodedText;
             scanner.pause();
-            document.getElementById('modal-code-display').innerText = "Item: " + decodedText;
+            document.getElementById('modal-code-display').innerText = decodedText;
             document.getElementById('mainModal').style.display = 'flex';
             showStep('step-status');
         }
 
         function showStep(stepId) {
-            document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
-            document.getElementById(stepId).classList.add('active');
+            document.querySelectorAll('.step').forEach(s => s.style.display = 'none');
+            document.getElementById(stepId).style.display = 'block';
         }
 
         function goToDetails(status) {
             selectedStatus = status;
-            document.getElementById('details-title').innerText = "Assigning as: " + status;
-            
-            // Toggle Date Field visibility
+            document.getElementById('details-title').innerText = "Assign to " + status;
             document.getElementById('loan-fields').style.display = (status === 'Loaned') ? 'block' : 'none';
-            
             showStep('step-details');
         }
 
@@ -144,24 +293,11 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.status === "success") {
-                    window.location.reload();
-                } else {
-                    alert("Error: " + data.message);
-                }
-            })
-            .catch(err => alert("Connection failed: " + err));
+            }).then(() => window.location.reload());
         }
 
         function closeModal() {
             document.getElementById('mainModal').style.display = 'none';
-            // Clear inputs
-            document.getElementById('input-name').value = "";
-            document.getElementById('input-id').value = "";
-            document.getElementById('input-date').value = "";
             scanner.resume();
         }
 
