@@ -1,23 +1,24 @@
-# Use a lightweight Python base image
+# Use a lightweight Python image
 FROM python:3.11-slim
 
-# Set the working directory
+# Install system dependencies for PostgreSQL (psycopg2)
+RUN apt-get update && apt-get install -y libpq-dev gcc && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
-# Copy and install dependencies
+# Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the application code
+# Copy application files
 COPY . .
-
-# Inform Docker that the container listens on port 8506
-EXPOSE 8506
 
 # Set environment variables for Flask
 ENV FLASK_APP=app.py
 ENV FLASK_RUN_PORT=8506
 ENV FLASK_RUN_HOST=0.0.0.0
 
-# Run using 'flask run' to respect the environment variables
+EXPOSE 8506
+
+# Start the application
 CMD ["flask", "run"]
