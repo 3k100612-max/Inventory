@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BI Asset Scanner</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 20px; }
+        #reader { width: 100%; max-width: 500px; margin: auto; }
+        .modal { display: none; position: fixed; z-index: 1; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
+        .modal-content { background: white; margin: 15% auto; padding: 20px; width: 80%; max-width: 400px; border-radius: 10px; }
+        select, input { width: 100%; padding: 10px; margin: 10px 0; box-sizing: border-box; }
+        button { padding: 10px 20px; background: #28a745; color: white; border: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Asset Inventory Scanner</h1>
+    <div id="reader"></div>
+
+    <!-- The Popup Form -->
+    <div id="formModal" class="modal">
+        <div class="modal-content">
+            <h3 id="scannedIdLabel"></h3>
+            <label>Status:</label>
+            <select id="status">
+                <option value="Returned">Returned</option>
+                <option value="Released">Released</option>
+                <option value="Loaned">Loaned</option>
+                <option value="Repair">Repair</option>
+                <option value="Retired">Retired</option>
+            </select>
+
+            <label>Type:</label>
+            <select id="type" onchange="toggleAccessory()">
+                <option value="Laptop">Laptop</option>
+                <option value="Mobile">Mobile</option>
+                <option value="Monitor">Monitor</option>
+                <option value="Accessories">Accessories</option>
+            </select>
+
+            <div id="accContainer" style="display:none;">
+                <label>Specify Accessory:</label>
+                <input type="text" id="accDetail" placeholder="e.g. Mouse, Keyboard">
+            </div>
+
+            <button onclick="submitData()">Submit to Database</button>
+        </div>
+    </div>
+
+    <script>
+        let currentAssetId = "";
+        const html5QrCode = new Html5Qrcode("reader");
+
+        // Start Scanner
+        html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 },
+            (decodedText) => {
+                // Play Sound
+                new Audio('https://assets.mixkit.co/sfx/preview/mixkit-software-interface-start-2574.mp3').play();
+                
+                currentAssetId = decodedText;
+                document.getElementById('scannedIdLabel').innerText = "Asset: " + decodedText;
+                document.getElementById('formModal').style.display = "block";
+                html5QrCode.pause(); // Stop scanning while form is open
+            }
+        );
+
+        function toggleAccessory() {
+            const type = document.getElementById('type').value;
+            document.getElementById('accContainer').style.display = (type === "Accessories") ? "block" : "none";
+        }
+
+        function submitData() {
+            const payload = {
+                asset_id: currentAssetId,
+                status: document.getElementById('status').value,
+                type: document.getElementById('type').value,
+                accessory_detail: document.getElementById('accDetail').value
+            };
+
+            fetch('/api/log', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(res => res.json())
+            .then(data => {
+                alert(data.message);
+                document.getElementById('formModal').style.display = "none";
+                html5QrCode.resume(); // Restart scanner
+            });
+        }
+    </script>
+</body>
+</html>
