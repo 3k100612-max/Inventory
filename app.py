@@ -10,12 +10,17 @@ def index():
 def scanned():
     data = request.json
     scanned_text = data.get("code")
+    status = data.get("status")
     
-    # Here you can process the code (e.g., look up a database, log it, etc.)
-    print(f"Server received scanned code: {scanned_text}")
+    # Log the result to the console
+    print(f"Update: Item {scanned_text} is now {status}")
     
-    return jsonify({"status": "success", "received": scanned_text})
+    return jsonify({
+        "status": "success", 
+        "received_code": scanned_text,
+        "received_status": status
+    })
 
 if __name__ == '__main__':
-    # '0.0.0.0' allows access from other devices on your network (like your phone)
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Running on port 8506 as requested
+    app.run(host='0.0.0.0', port=8506, debug=True)
