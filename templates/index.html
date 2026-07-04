@@ -3,89 +3,85 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inventory Scanner</title>
+    <title>Inventory Manager</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; margin: 0; display: flex; flex-direction: column; align-items: center; }
-        #reader { width: 100%; max-width: 500px; margin-top: 20px; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        .container { padding: 20px; text-align: center; }
-        
-        /* Modal Styles */
-        #statusModal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); align-items: center; justify-content: center; }
-        .modal-content { background-color: white; padding: 30px; border-radius: 12px; width: 80%; max-width: 400px; text-align: center; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
-        .modal-content h2 { margin-top: 0; color: #333; font-size: 1.2rem; }
-        .modal-content p { color: #666; margin-bottom: 20px; font-weight: bold; }
+        body { font-family: sans-serif; background: #f0f2f5; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        #reader { width: 100%; max-width: 500px; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .history-section { margin-top: 30px; width: 100%; max-width: 600px; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #34495e; color: white; }
 
-        /* Status Buttons */
-        .status-btn { display: block; width: 100%; padding: 12px; margin: 10px 0; border: none; border-radius: 6px; font-size: 1rem; cursor: pointer; transition: background 0.2s; font-weight: 500; }
-        .in-use { background-color: #3498db; color: white; }
-        .in-stock { background-color: #2ecc71; color: white; }
-        .retired { background-color: #e74c3c; color: white; }
-        .loaned { background-color: #f1c40f; color: #333; }
-        .maintenance { background-color: #9b59b6; color: white; }
-        .status-btn:active { transform: scale(0.98); opacity: 0.9; }
+        /* Modal */
+        #statusModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-content { background: white; padding: 25px; border-radius: 12px; width: 90%; max-width: 350px; text-align: center; }
+        .btn { display: block; width: 100%; padding: 12px; margin: 8px 0; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; color: white; }
+        .in-use { background: #3498db; }
+        .in-stock { background: #2ecc71; }
+        .loaned { background: #f1c40f; color: #333; }
+        .maintenance { background: #9b59b6; }
+        .retired { background: #e74c3c; }
     </style>
 </head>
 <body>
 
-<div class="container">
     <h1>Inventory Scanner</h1>
     <div id="reader"></div>
-    <p id="result-text">Align QR/Barcode to scan</p>
-</div>
 
-<!-- Status Selection Modal -->
-<div id="statusModal">
-    <div class="modal-content">
-        <h2>Update Status</h2>
-        <p id="scanned-code-display"></p>
-        <button class="status-btn in-use" onclick="submitStatus('In Use')">In Use</button>
-        <button class="status-btn in-stock" onclick="submitStatus('In Stock')">In Stock</button>
-        <button class="status-btn loaned" onclick="submitStatus('Loaned')">Loaned</button>
-        <button class="status-btn maintenance" onclick="submitStatus('In Maintenance')">In Maintenance</button>
-        <button class="status-btn retired" onclick="submitStatus('Retired')">Retired</button>
+    <div class="history-section">
+        <h3>Recent Scans</h3>
+        <table>
+            <thead>
+                <tr><th>Code</th><th>Status</th><th>Time</th></tr>
+            </thead>
+            <tbody>
+                {% for scan in scans %}
+                <tr>
+                    <td>{{ scan.code }}</td>
+                    <td>{{ scan.status }}</td>
+                    <td>{{ scan.timestamp.strftime('%H:%M') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
-</div>
 
-<script>
-    let html5QrcodeScanner;
-    let currentCode = "";
+    <!-- Selection Modal -->
+    <div id="statusModal">
+        <div class="modal-content">
+            <h2 id="display-code"></h2>
+            <p>Select Item Status:</p>
+            <button class="btn in-use" onclick="sendData('In Use')">In Use</button>
+            <button class="btn in-stock" onclick="sendData('In Stock')">In Stock</button>
+            <button class="btn loaned" onclick="sendData('Loaned')">Loaned</button>
+            <button class="btn maintenance" onclick="sendData('In Maintenance')">In Maintenance</button>
+            <button class="btn retired" onclick="sendData('Retired')">Retired</button>
+        </div>
+    </div>
 
-    function onScanSuccess(decodedText, decodedResult) {
-        // Pause scanner and save code
-        currentCode = decodedText;
-        html5QrcodeScanner.pause();
-        
-        // Show Modal
-        document.getElementById('scanned-code-display').innerText = "Code: " + decodedText;
-        document.getElementById('statusModal').style.display = "flex";
-    }
+    <script>
+        let scanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 });
+        let currentCode = "";
 
-    function submitStatus(status) {
-        console.log(`Code: ${currentCode}, Status: ${status}`);
-        
-        // Send data to server
-        fetch('/scanned', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code: currentCode, status: status })
-        })
-        .then(response => response.json())
-        .then(data => {
-            alert(`Success! ${currentCode} marked as ${status}`);
-            closeModal();
-        });
-    }
+        function onScanSuccess(decodedText) {
+            currentCode = decodedText;
+            scanner.pause();
+            document.getElementById('display-code').innerText = decodedText;
+            document.getElementById('statusModal').style.display = 'flex';
+        }
 
-    function closeModal() {
-        document.getElementById('statusModal').style.display = "none";
-        html5QrcodeScanner.resume(); // Restart camera
-    }
+        function sendData(status) {
+            fetch('/scanned', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: currentCode, status: status })
+            }).then(() => {
+                window.location.reload(); // Refresh to update table
+            });
+        }
 
-    // Initialize Scanner
-    html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 });
-    html5QrcodeScanner.render(onScanSuccess);
-</script>
-
+        scanner.render(onScanSuccess);
+    </script>
 </body>
 </html>
