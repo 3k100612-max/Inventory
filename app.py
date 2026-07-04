@@ -7,10 +7,10 @@ import sys
 app = Flask(__name__)
 
 # Database Configuration
-DB_USER = os.environ.get('DB_USER', 'your_user')
-DB_PASS = os.environ.get('DB_PASS', 'your_password')
-DB_HOST = os.environ.get('DB_HOST', 'your_hostinger_db_ip')
-DB_NAME = os.environ.get('DB_NAME', 'your_db_name')
+DB_USER = os.environ.get('DB_USER', 'postgres')
+DB_PASS = os.environ.get('DB_PASS', 'P12345')
+DB_HOST = os.environ.get('DB_HOST', 'inventory-inventory-sqaoox')
+DB_NAME = os.environ.get('DB_NAME', 'inventory')
 
 app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
