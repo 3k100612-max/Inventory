@@ -1,2 +1,4 @@
-opencv-python
-pyzbar
+Flask
+psycopg2-binary
+gunicorn
+python-dotenv
