@@ -1,18 +1,26 @@
 import os
 from flask import Flask, render_template, request, jsonify
 import psycopg2
+from dotenv import load_dotenv # Add this
 from psycopg2.extras import RealDictCursor
+
+# Load the .env file
+load_dotenv() 
 
 app = Flask(__name__)
 
-# Database connection helper
 def get_db_connection():
-    # In production, use environment variables (e.g., DATABASE_URL)
-    conn = psycopg2.connect(
+    # Use the DATABASE_URL variable which is standard for cloud Postgres
+    url = os.environ.get("DATABASE_URL")
+    if url:
+        return psycopg2.connect(url)
+    
+    # Fallback for local testing
+    return psycopg2.connect(
         host=os.environ.get("DB_HOST", "localhost"),
-        database=os.environ.get("DB_NAME", "your_db_name"),
-        user=os.environ.get("DB_USER", "postgres"),
-        password=os.environ.get("DB_PASS", "your_password")
+        database=os.environ.get("DB_NAME"),
+        user=os.environ.get("DB_USER"),
+        password=os.environ.get("DB_PASS")
     )
     return conn
 
