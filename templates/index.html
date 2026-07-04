@@ -65,3 +65,58 @@
             <button onclick="saveToPostgres()">Submit to Database</button>
         </div>
     </div>
+
+    <script>
+        let currentCode = "";
+        const html5QrCode = new Html5Qrcode("reader");
+
+        // 1. FAST CONFIGURATION
+        const config = { 
+            fps: 25,               // High frame rate for instant capture
+            qrbox: { width: 250, height: 150 }, // Focused scan area (faster processing)
+            aspectRatio: 1.0, 
+            experimentalFeatures: {
+                useBarCodeDetectorIfSupported: true // CRITICAL: Uses phone's specialized chip
+            }
+        };
+
+        // 2. START SCANNING
+        html5QrCode.start({ facingMode: "environment" }, config, (decodedText) => {
+            // Instant Feedback
+            if (navigator.vibrate) navigator.vibrate(100); 
+            new Audio('https://assets.mixkit.co/sfx/preview/mixkit-software-interface-start-2574.mp3').play();
+
+            currentCode = decodedText;
+            document.getElementById('scannedIdLabel').innerText = "Asset: " + decodedText;
+            document.getElementById('formModal').style.display = "block";
+            
+            // Pause to prevent double-scans
+            html5QrCode.pause(true); 
+        });
+
+        // 3. SEND TO PYTHON -> POSTGRES
+        async function saveToPostgres() {
+            const payload = {
+                asset_id: currentCode,
+                status: document.getElementById('status').value,
+                type: "General"
+            };
+
+            try {
+                const response = await fetch('/api/log', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    document.getElementById('formModal').style.display = "none";
+                    html5QrCode.resume(); // Ready for next item immediately
+                }
+            } catch (err) {
+                alert("Database Sync Error");
+            }
+        }
+    </script>
+</body>
+</html>
