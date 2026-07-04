@@ -1,26 +1,65 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>BI Asset Scanner</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>High-Speed Asset Scanner</title>
+    <!-- Modern UI library for alerts -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- The scanning engine -->
     <script src="https://unpkg.com/html5-qrcode"></script>
+    
     <style>
-        body { font-family: sans-serif; text-align: center; padding: 20px; }
-        #reader { width: 100%; max-width: 500px; margin: auto; }
-        .modal { display: none; position: fixed; z-index: 1; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
-        .modal-content { background: white; margin: 15% auto; padding: 20px; width: 80%; max-width: 400px; border-radius: 10px; }
-        select, input { width: 100%; padding: 10px; margin: 10px 0; box-sizing: border-box; }
-        button { padding: 10px 20px; background: #28a745; color: white; border: none; cursor: pointer; }
+        :root {
+            --primary: #2563eb;
+            --success: #22c55e;
+            --bg: #f8fafc;
+        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); margin: 0; display: flex; flex-direction: column; align-items: center; }
+        
+        .header { background: white; width: 100%; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; margin-bottom: 20px; }
+        
+        #reader { 
+            width: 100%; 
+            max-width: 600px; 
+            border-radius: 12px; 
+            overflow: hidden; 
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+            background: black;
+        }
+
+        /* Modal Styling */
+        .modal { display: none; position: fixed; z-index: 100; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(4px); }
+        .modal-content { background: white; margin: 10% auto; padding: 30px; width: 90%; max-width: 450px; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
+        
+        h2 { margin-top: 0; color: #1e293b; }
+        .asset-badge { background: #e2e8f0; padding: 5px 12px; border-radius: 20px; font-family: monospace; font-size: 1.1em; color: var(--primary); }
+        
+        label { display: block; margin-top: 15px; font-weight: 600; color: #64748b; font-size: 0.9em; }
+        select, input { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 16px; }
+        
+        .btn-submit { width: 100%; padding: 14px; margin-top: 25px; background: var(--primary); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
+        .btn-submit:hover { background: #1d4ed8; }
     </style>
 </head>
 <body>
-    <h1>Asset Inventory Scanner</h1>
+
+    <div class="header">
+        <h1>Inventory System</h1>
+        <p>Point camera at a Barcode or QR Code</p>
+    </div>
+
     <div id="reader"></div>
 
-    <!-- The Popup Form -->
+    <!-- Data Entry Modal -->
     <div id="formModal" class="modal">
         <div class="modal-content">
-            <h3 id="scannedIdLabel"></h3>
-            <label>Status:</label>
+            <h2>Asset Detected</h2>
+            <div style="margin-bottom: 20px;">
+                <span id="scannedIdLabel" class="asset-badge"></span>
+            </div>
+
+            <label>Current Status</label>
             <select id="status">
                 <option value="Returned">Returned</option>
                 <option value="Released">Released</option>
@@ -29,7 +68,7 @@
                 <option value="Retired">Retired</option>
             </select>
 
-            <label>Type:</label>
+            <label>Item Category</label>
             <select id="type" onchange="toggleAccessory()">
                 <option value="Laptop">Laptop</option>
                 <option value="Mobile">Mobile</option>
@@ -38,37 +77,56 @@
             </select>
 
             <div id="accContainer" style="display:none;">
-                <label>Specify Accessory:</label>
-                <input type="text" id="accDetail" placeholder="e.g. Mouse, Keyboard">
+                <label>Accessory Details</label>
+                <input type="text" id="accDetail" placeholder="e.g. Logitech MX Master Mouse">
             </div>
 
-            <button onclick="submitData()">Submit to Database</button>
+            <button class="btn-submit" onclick="submitData()">Save to PostgreSQL</button>
         </div>
     </div>
 
     <script>
         let currentAssetId = "";
+        
+        // 1. Optimized Scanner Configuration
         const html5QrCode = new Html5Qrcode("reader");
-
-        // Start Scanner
-        html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 },
-            (decodedText) => {
-                // Play Sound
-                new Audio('https://assets.mixkit.co/sfx/preview/mixkit-software-interface-start-2574.mp3').play();
-                
-                currentAssetId = decodedText;
-                document.getElementById('scannedIdLabel').innerText = "Asset: " + decodedText;
-                document.getElementById('formModal').style.display = "block";
-                html5QrCode.pause(); // Stop scanning while form is open
+        const config = { 
+            fps: 20,            // Increased from 10 to 20 for smoother detection
+            qrbox: { width: 250, height: 250 }, // Focus area
+            aspectRatio: 1.0,   // Square view is faster for processing
+            experimentalFeatures: {
+                useBarCodeDetectorIfSupported: true // Uses hardware acceleration if available
             }
+        };
+
+        // Start scanning
+        html5QrCode.start(
+            { facingMode: "environment" }, 
+            config,
+            onScanSuccess
         );
+
+        function onScanSuccess(decodedText) {
+            // Haptic Feedback (Vibrate phone)
+            if (navigator.vibrate) navigator.vibrate(100);
+            
+            // Audio Feedback
+            new Audio('https://assets.mixkit.co/sfx/preview/mixkit-software-interface-start-2574.mp3').play();
+            
+            currentAssetId = decodedText;
+            document.getElementById('scannedIdLabel').innerText = decodedText;
+            document.getElementById('formModal').style.display = "block";
+            
+            // Pause scanner to save CPU and battery while filling form
+            html5QrCode.pause(true); 
+        }
 
         function toggleAccessory() {
             const type = document.getElementById('type').value;
             document.getElementById('accContainer').style.display = (type === "Accessories") ? "block" : "none";
         }
 
-        function submitData() {
+        async function submitData() {
             const payload = {
                 asset_id: currentAssetId,
                 status: document.getElementById('status').value,
@@ -76,17 +134,34 @@
                 accessory_detail: document.getElementById('accDetail').value
             };
 
-            fetch('/api/log', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            })
-            .then(res => res.json())
-            .then(data => {
-                alert(data.message);
-                document.getElementById('formModal').style.display = "none";
-                html5QrCode.resume(); // Restart scanner
-            });
+            try {
+                const response = await fetch('/api/log', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+
+                if (result.status === "success") {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Logged!',
+                        text: 'Data synced to PostgreSQL',
+                        timer: 1500,
+                        showConfirmButton: false
+                    });
+                    
+                    // Reset and Restart
+                    document.getElementById('formModal').style.display = "none";
+                    document.getElementById('accDetail').value = "";
+                    html5QrCode.resume();
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                Swal.fire('Error', 'Failed to save: ' + error.message, 'error');
+            }
         }
     </script>
 </body>
