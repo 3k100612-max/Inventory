@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Python Scanner</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            text-align: center; 
+            padding: 20px; 
+            background: #121212; 
+            color: white;
+        }
+
+        /* Container for the scanner and the line */
+        .scanner-wrapper {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            margin: auto;
+            border: 4px solid #3498db;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #000;
+        }
+
+        #reader {
+            width: 100%;
+        }
+
+        /* The Animated Scanning Line */
+        .scan-line {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: rgba(52, 152, 219, 0.8);
+            box-shadow: 0 0 15px 5px rgba(52, 152, 219, 0.5);
+            z-index: 10;
+            pointer-events: none; /* Let clicks pass through */
+            animation: moveLine 2.5s infinite linear;
+        }
+
+        @keyframes moveLine {
+            0% { top: 0%; }
+            50% { top: 100%; }
+            100% { top: 0%; }
+        }
+
+        #result {
+            margin-top: 20px;
+            font-size: 1.1rem;
+            padding: 10px;
+            border-radius: 5px;
+            background: #1e1e1e;
+            display: inline-block;
+        }
+
+        .status-scanning { color: #3498db; }
+        .status-success { color: #2ecc71; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h1>Pro Web Scanner</h1>
+    
+    <div class="scanner-wrapper">
+        <!-- The scanning line -->
+        <div class="scan-line" id="line"></div>
+        <!-- The camera feed -->
+        <div id="reader"></div>
+    </div>
+
+    <div id="result" class="status-scanning">Waiting for camera...</div>
+
+    <script>
+        // Function to generate a "Beep" sound using Web Audio API
+        function playSuccessSound() {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator.type = 'sine'; // Pure tone
+            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // Frequency in Hz (A5)
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); // Volume
+
+            oscillator.start();
+            // Stop after 150ms
+            oscillator.stop(audioCtx.currentTime + 0.15);
+        }
+
+        function onScanSuccess(decodedText, decodedResult) {
+            // 1. Play the beep
+            playSuccessSound();
+
+            // 2. Visual feedback
+            document.getElementById('line').style.display = 'none'; // Stop line
+            document.getElementById('result').innerText = "✔ Scanned: " + decodedText;
+            document.getElementById('result').className = "status-success";
+
+            // 3. Send to Python Backend
+            fetch('/scanned', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: decodedText })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log("Server received:", data);
+                // Optional: Restart scanner after a short delay
+                setTimeout(() => { location.reload(); }, 2000);
+            });
+
+            // Stop the scanner to prevent multiple triggers
+            html5QrcodeScanner.clear();
+        }
+
+        function onScanFailure(error) {
+            // Quietly ignore scan failures
+        }
+
+        let html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader", 
+            { 
+                fps: 20, 
+                qrbox: { width: 250, height: 250 },
+                aspectRatio: 1.0 
+            }
+        );
+        html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+    </script>
+</body>
+</html>
