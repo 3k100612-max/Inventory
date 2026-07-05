@@ -3,43 +3,49 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Universal Inventory Scanner</title>
+    <title>Inventory Manager Pro</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body { background-color: #f0f2f5; padding: 15px; font-family: 'Segoe UI', sans-serif; }
         .card { border: none; border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.08); margin-bottom: 20px; overflow: hidden; }
+        
+        /* SCANNER UI */
         #reader-container { position: relative; width: 100%; border-radius: 12px; overflow: hidden; background: #000; }
         #reader { width: 100%; }
         .scanner-laser { position: absolute; top: 0; left: 0; width: 100%; height: 2px; background: rgba(255, 0, 0, 0.7); box-shadow: 0 0 15px 2px rgba(255, 0, 0, 0.5); z-index: 10; display: none; animation: scan-move 2s infinite linear; }
         @keyframes scan-move { 0% { top: 0%; } 50% { top: 100%; } 100% { top: 0%; } }
         .flash-success { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(40, 167, 69, 0.4); z-index: 20; display: none; }
+        
+        /* BULK INDICATOR */
         .bulk-indicator { display: none; background: #e7f3ff; border: 1px solid #bde0fe; border-radius: 8px; padding: 10px; margin-bottom: 15px; }
+        
+        /* BUTTONS & FORMS */
         .btn-group-custom { display: flex; flex-wrap: wrap; gap: 8px; }
         .btn-group-custom .btn { flex: 1 1 auto; border-radius: 8px !important; }
         .scan-btn { height: 60px; font-size: 1.2rem; font-weight: bold; }
         #return_date_section { display: none; }
-        .note-text { font-size: 0.85rem; color: #6c757d; font-style: italic; }
+        .note-text { font-size: 0.85rem; color: #6c757d; font-style: italic; display: block; }
     </style>
 </head>
 <body>
 
 <div class="container-fluid">
-    <h2 class="text-center mb-4">Inventory Flow</h2>
+    <h2 class="text-center mb-4">Inventory Control</h2>
 
     <!-- BULK MODE INDICATOR -->
     <div id="bulk_indicator" class="bulk-indicator shadow-sm">
         <div class="d-flex justify-content-between align-items-center">
             <div>
-                <strong>Bulk Mode:</strong> 
+                <strong>Bulk Mode Active:</strong> 
                 <span id="active_status" class="badge bg-primary"></span> 
                 <span id="active_dept" class="badge bg-secondary"></span>
             </div>
-            <button class="btn btn-sm btn-danger" onclick="exitBulkMode()">Exit</button>
+            <button class="btn btn-sm btn-danger" onclick="exitBulkMode()">Exit Bulk</button>
         </div>
     </div>
 
-    <!-- CAMERA SCANNER CARD -->
+    <!-- SCANNER SECTION -->
     <div class="card">
         <div id="reader-container">
             <div id="reader"></div>
@@ -51,32 +57,36 @@
                 <button id="start_btn" class="btn btn-primary scan-btn" onclick="startScanner()">Open Camera Scanner</button>
                 <button id="stop_btn" class="btn btn-secondary" onclick="stopScanner()" style="display:none;">Close Camera</button>
             </div>
-            <div class="mt-3">
-                <input type="text" id="item_code" class="form-control" placeholder="Manual entry..." autocomplete="off">
-            </div>
+            <input type="text" id="manual_code" class="form-control mt-3" placeholder="Or type code manually...">
         </div>
     </div>
 
-    <!-- RECENT ACTIVITY -->
+    <!-- LOG SECTION -->
     <div class="card p-3">
         <h5 class="mb-3">Recent Activity</h5>
         <div class="table-responsive">
             <table class="table table-sm table-hover align-middle">
                 <thead>
                     <tr>
-                        <th>Item</th>
+                        <th>Item Code</th>
                         <th>Status</th>
                         <th>Dept</th>
-                        <th>Notes</th>
+                        <th>Info</th>
                     </tr>
                 </thead>
                 <tbody id="history_body">
                     {% for scan in scans %}
-                    <tr>
-                        <td class="fw-bold">{{ scan.code }}</td>
+                    <tr {% if scan.is_flagged %}class="table-danger"{% endif %}>
+                        <td class="fw-bold">
+                            {{ scan.code }}
+                            {% if scan.is_flagged %} 🚩{% endif %}
+                        </td>
                         <td><span class="badge {% if scan.status == 'In Maintenance' %}bg-warning text-dark{% elif scan.status == 'Retired' %}bg-danger{% else %}bg-primary{% endif %}">{{ scan.status }}</span></td>
                         <td><span class="badge bg-secondary">{{ scan.department or '-' }}</span></td>
-                        <td><span class="note-text">{{ scan.notes or '-' }}</span></td>
+                        <td>
+                            {% if scan.return_date %}<small class="d-block">Return: {{ scan.return_date }}</small>{% endif %}
+                            <span class="note-text">{{ scan.notes or '' }}</span>
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -85,16 +95,16 @@
     </div>
 </div>
 
-<!-- MODAL: ONCE VS MULTIPLE -->
+<!-- MODAL: MODE -->
 <div class="modal fade" id="modeModal" data-bs-backdrop="static" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header"><h5 class="modal-title">Scanned: <span id="modal_code" class="text-primary"></span></h5></div>
+            <div class="modal-header"><h5 class="modal-title">Item Scanned: <span id="modal_code" class="text-primary"></span></h5></div>
             <div class="modal-body text-center">
-                <p>Process this scan as:</p>
+                <p>Choose processing mode:</p>
                 <div class="d-grid gap-3">
-                    <button class="btn btn-outline-primary btn-lg" onclick="setupEntry('once')">Single Item (Once)</button>
-                    <button class="btn btn-outline-success btn-lg" onclick="setupEntry('multiple')">Bulk Scan (Keep Going)</button>
+                    <button class="btn btn-outline-primary btn-lg" onclick="setupEntry('once')">Single Item</button>
+                    <button class="btn btn-outline-success btn-lg" onclick="setupEntry('multiple')">Bulk Mode (Keep Scanning)</button>
                 </div>
             </div>
         </div>
@@ -117,10 +127,12 @@
                     <label class="btn btn-outline-primary" for="s3">In Stock</label>
                     <input type="radio" class="btn-check" name="m_status" id="s4" value="In Maintenance" onchange="toggleReturnDate()">
                     <label class="btn btn-outline-warning" for="s4">Repair</label>
+                    <input type="radio" class="btn-check" name="m_status" id="s5" value="Retired" onchange="toggleReturnDate()">
+                    <label class="btn btn-outline-danger" for="s5">Retired</label>
                 </div>
 
                 <div id="return_date_section" class="mb-3">
-                    <label class="fw-bold mb-2 text-primary">Return Date</label>
+                    <label class="fw-bold mb-2 text-primary">Expected Return Date</label>
                     <input type="date" id="m_return_date" class="form-control">
                 </div>
 
@@ -138,10 +150,8 @@
                     <label class="btn btn-outline-secondary" for="d5">Admin</label>
                 </div>
 
-                <div class="mb-2">
-                    <label class="fw-bold mb-2">Notes (Optional)</label>
-                    <textarea id="m_notes" class="form-control" rows="2" placeholder="Add details..."></textarea>
-                </div>
+                <label class="fw-bold mb-2">Notes (Optional)</label>
+                <textarea id="m_notes" class="form-control" rows="2"></textarea>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-success w-100 py-2" onclick="processSave()">Confirm & Start</button>
@@ -155,10 +165,7 @@
 let html5QrCode;
 let currentCode = "";
 let scanMode = "once";
-let bulkStatus = null;
-let bulkDept = null;
-let bulkReturnDate = null;
-let bulkNotes = null;
+let bulkStatus = null, bulkDept = null, bulkReturnDate = null, bulkNotes = null;
 
 const modeModal = new bootstrap.Modal(document.getElementById('modeModal'));
 const detailsModal = new bootstrap.Modal(document.getElementById('detailsModal'));
@@ -192,13 +199,10 @@ function onScanSuccess(decodedText) {
     const flash = document.getElementById('flash');
     flash.style.display = 'block';
     setTimeout(() => flash.style.display = 'none', 200);
+
     currentCode = decodedText;
-    if (bulkStatus) {
-        quickSave(currentCode, bulkStatus, bulkDept, bulkReturnDate, bulkNotes);
-    } else {
-        document.getElementById('modal_code').innerText = currentCode;
-        modeModal.show();
-    }
+    if (bulkStatus) quickSave(currentCode, bulkStatus, bulkDept, bulkReturnDate, bulkNotes);
+    else { document.getElementById('modal_code').innerText = currentCode; modeModal.show(); }
 }
 
 function setupEntry(mode) {
@@ -225,13 +229,13 @@ function quickSave(code, status, dept, rDate, notes) {
     fetch('/scanned', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-            code: code, status: status, department: dept, 
-            return_date: rDate, notes: notes 
-        })
-    }).then(() => {
+        body: JSON.stringify({ code, status, department: dept, return_date: rDate, notes })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.is_flagged) alert(data.warning);
         if (scanMode === 'once') location.reload();
-        else addRowToTable(code, status, dept, notes);
+        else addRowToTable(code, status, dept, notes, data.is_flagged);
     });
 }
 
@@ -243,11 +247,17 @@ function updateBulkUI() {
 
 function exitBulkMode() { location.reload(); }
 
-function addRowToTable(code, status, dept, notes) {
+function addRowToTable(code, status, dept, notes, is_flagged) {
     const tbody = document.getElementById('history_body');
-    const row = `<tr><td class="fw-bold">${code}</td><td><span class="badge bg-primary">${status}</span></td><td><span class="badge bg-secondary">${dept}</span></td><td><span class="note-text">${notes || '-'}</span></td></tr>`;
+    const rowClass = is_flagged ? 'class="table-danger"' : '';
+    const flagIcon = is_flagged ? ' 🚩' : '';
+    const row = `<tr ${rowClass}><td class="fw-bold">${code}${flagIcon}</td><td><span class="badge bg-primary">${status}</span></td><td><span class="badge bg-secondary">${dept}</span></td><td><span class="note-text">${notes || ''}</span></td></tr>`;
     tbody.insertAdjacentHTML('afterbegin', row);
 }
+
+document.getElementById('manual_code').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') { onScanSuccess(this.value); this.value = ''; }
+});
 </script>
 </body>
 </html>
