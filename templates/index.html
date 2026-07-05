@@ -9,44 +9,17 @@
     <style>
         body { background-color: #f0f2f5; padding: 15px; font-family: 'Segoe UI', sans-serif; }
         .card { border: none; border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.08); margin-bottom: 20px; overflow: hidden; }
-        
-        /* --- SCANNER BOX & LASER --- */
         #reader-container { position: relative; width: 100%; border-radius: 12px; overflow: hidden; background: #000; }
         #reader { width: 100%; }
-        
-        /* The Scanning Laser Line */
-        .scanner-laser {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 2px;
-            background: rgba(255, 0, 0, 0.7);
-            box-shadow: 0 0 15px 2px rgba(255, 0, 0, 0.5);
-            z-index: 10;
-            display: none; /* Hidden until scanner starts */
-            animation: scan-move 2s infinite linear;
-        }
-
-        @keyframes scan-move {
-            0% { top: 0%; }
-            50% { top: 100%; }
-            100% { top: 0%; }
-        }
-
-        /* Success Flash Effect */
-        .flash-success {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(40, 167, 69, 0.4);
-            z-index: 20;
-            display: none;
-        }
-
+        .scanner-laser { position: absolute; top: 0; left: 0; width: 100%; height: 2px; background: rgba(255, 0, 0, 0.7); box-shadow: 0 0 15px 2px rgba(255, 0, 0, 0.5); z-index: 10; display: none; animation: scan-move 2s infinite linear; }
+        @keyframes scan-move { 0% { top: 0%; } 50% { top: 100%; } 100% { top: 0%; } }
+        .flash-success { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(40, 167, 69, 0.4); z-index: 20; display: none; }
         .bulk-indicator { display: none; background: #e7f3ff; border: 1px solid #bde0fe; border-radius: 8px; padding: 10px; margin-bottom: 15px; }
         .btn-group-custom { display: flex; flex-wrap: wrap; gap: 8px; }
         .btn-group-custom .btn { flex: 1 1 auto; border-radius: 8px !important; }
         .scan-btn { height: 60px; font-size: 1.2rem; font-weight: bold; }
+        #return_date_section { display: none; }
+        .note-text { font-size: 0.85rem; color: #6c757d; font-style: italic; }
     </style>
 </head>
 <body>
@@ -94,6 +67,7 @@
                         <th>Item</th>
                         <th>Status</th>
                         <th>Dept</th>
+                        <th>Notes</th>
                     </tr>
                 </thead>
                 <tbody id="history_body">
@@ -102,6 +76,7 @@
                         <td class="fw-bold">{{ scan.code }}</td>
                         <td><span class="badge {% if scan.status == 'In Maintenance' %}bg-warning text-dark{% elif scan.status == 'Retired' %}bg-danger{% else %}bg-primary{% endif %}">{{ scan.status }}</span></td>
                         <td><span class="badge bg-secondary">{{ scan.department or '-' }}</span></td>
+                        <td><span class="note-text">{{ scan.notes or '-' }}</span></td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -110,7 +85,7 @@
     </div>
 </div>
 
-<!-- MODALS REMAIN THE SAME AS PREVIOUS STEP -->
+<!-- MODAL: ONCE VS MULTIPLE -->
 <div class="modal fade" id="modeModal" data-bs-backdrop="static" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -126,27 +101,31 @@
     </div>
 </div>
 
+<!-- MODAL: DETAILS -->
 <div class="modal fade" id="detailsModal" data-bs-backdrop="static" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header"><h5 class="modal-title">Set Global Details</h5></div>
+            <div class="modal-header"><h5 class="modal-title">Set Details</h5></div>
             <div class="modal-body">
                 <label class="fw-bold mb-2">Status</label>
                 <div class="btn-group-custom mb-3">
-                    <input type="radio" class="btn-check" name="m_status" id="s1" value="In Use" checked>
+                    <input type="radio" class="btn-check" name="m_status" id="s1" value="In Use" onchange="toggleReturnDate()" checked>
                     <label class="btn btn-outline-primary" for="s1">In Use</label>
-                    <input type="radio" class="btn-check" name="m_status" id="s2" value="Loaned">
+                    <input type="radio" class="btn-check" name="m_status" id="s2" value="Loaned" onchange="toggleReturnDate()">
                     <label class="btn btn-outline-primary" for="s2">Loaned</label>
-                    <input type="radio" class="btn-check" name="m_status" id="s3" value="In Stock">
+                    <input type="radio" class="btn-check" name="m_status" id="s3" value="In Stock" onchange="toggleReturnDate()">
                     <label class="btn btn-outline-primary" for="s3">In Stock</label>
-                    <input type="radio" class="btn-check" name="m_status" id="s4" value="In Maintenance">
+                    <input type="radio" class="btn-check" name="m_status" id="s4" value="In Maintenance" onchange="toggleReturnDate()">
                     <label class="btn btn-outline-warning" for="s4">Repair</label>
-                    <input type="radio" class="btn-check" name="m_status" id="s5" value="Retired">
-                    <label class="btn btn-outline-danger" for="s5">Retired</label>
+                </div>
+
+                <div id="return_date_section" class="mb-3">
+                    <label class="fw-bold mb-2 text-primary">Return Date</label>
+                    <input type="date" id="m_return_date" class="form-control">
                 </div>
 
                 <label class="fw-bold mb-2">Department</label>
-                <div class="btn-group-custom">
+                <div class="btn-group-custom mb-3">
                     <input type="radio" class="btn-check" name="m_dept" id="d1" value="IT" checked>
                     <label class="btn btn-outline-secondary" for="d1">IT</label>
                     <input type="radio" class="btn-check" name="m_dept" id="d2" value="HR">
@@ -157,6 +136,11 @@
                     <label class="btn btn-outline-secondary" for="d4">Proc</label>
                     <input type="radio" class="btn-check" name="m_dept" id="d5" value="Admin">
                     <label class="btn btn-outline-secondary" for="d5">Admin</label>
+                </div>
+
+                <div class="mb-2">
+                    <label class="fw-bold mb-2">Notes (Optional)</label>
+                    <textarea id="m_notes" class="form-control" rows="2" placeholder="Add details..."></textarea>
                 </div>
             </div>
             <div class="modal-footer">
@@ -173,33 +157,23 @@ let currentCode = "";
 let scanMode = "once";
 let bulkStatus = null;
 let bulkDept = null;
+let bulkReturnDate = null;
+let bulkNotes = null;
 
 const modeModal = new bootstrap.Modal(document.getElementById('modeModal'));
 const detailsModal = new bootstrap.Modal(document.getElementById('detailsModal'));
 
+function toggleReturnDate() {
+    const status = document.querySelector('input[name="m_status"]:checked').value;
+    document.getElementById('return_date_section').style.display = (status === 'Loaned') ? 'block' : 'none';
+}
+
 function startScanner() {
     document.getElementById('start_btn').style.display = 'none';
     document.getElementById('stop_btn').style.display = 'block';
-    document.getElementById('laser').style.display = 'block'; // Show Laser
-    
+    document.getElementById('laser').style.display = 'block';
     html5QrCode = new Html5Qrcode("reader");
-    
-    // CONFIG: Support QR, Barcodes, EAN, UPC, etc.
-    const config = { 
-        fps: 15, 
-        qrbox: { width: 280, height: 180 },
-        aspectRatio: 1.0,
-        // Explicitly support all formats
-        formatsToSupport: [ 
-            Html5QrcodeSupportedFormats.QR_CODE,
-            Html5QrcodeSupportedFormats.EAN_13,
-            Html5QrcodeSupportedFormats.CODE_128,
-            Html5QrcodeSupportedFormats.UPC_A,
-            Html5QrcodeSupportedFormats.UPC_E,
-            Html5QrcodeSupportedFormats.CODE_39
-        ]
-    };
-
+    const config = { fps: 15, qrbox: { width: 280, height: 180 }, aspectRatio: 1.0 };
     html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess);
 }
 
@@ -214,16 +188,13 @@ function stopScanner() {
 }
 
 function onScanSuccess(decodedText) {
-    // 1. Visual/Haptic Feedback
     if (navigator.vibrate) navigator.vibrate(100);
     const flash = document.getElementById('flash');
     flash.style.display = 'block';
     setTimeout(() => flash.style.display = 'none', 200);
-
     currentCode = decodedText;
-    
     if (bulkStatus) {
-        quickSave(currentCode, bulkStatus, bulkDept);
+        quickSave(currentCode, bulkStatus, bulkDept, bulkReturnDate, bulkNotes);
     } else {
         document.getElementById('modal_code').innerText = currentCode;
         modeModal.show();
@@ -239,23 +210,28 @@ function setupEntry(mode) {
 function processSave() {
     const status = document.querySelector('input[name="m_status"]:checked').value;
     const dept = document.querySelector('input[name="m_dept"]:checked').value;
+    const rDate = document.getElementById('m_return_date').value;
+    const notes = document.getElementById('m_notes').value;
+
     if (scanMode === 'multiple') {
-        bulkStatus = status;
-        bulkDept = dept;
+        bulkStatus = status; bulkDept = dept; bulkReturnDate = rDate; bulkNotes = notes;
         updateBulkUI();
     }
-    quickSave(currentCode, status, dept);
+    quickSave(currentCode, status, dept, rDate, notes);
     detailsModal.hide();
 }
 
-function quickSave(code, status, dept) {
+function quickSave(code, status, dept, rDate, notes) {
     fetch('/scanned', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: code, status: status, department: dept })
+        body: JSON.stringify({ 
+            code: code, status: status, department: dept, 
+            return_date: rDate, notes: notes 
+        })
     }).then(() => {
         if (scanMode === 'once') location.reload();
-        else addRowToTable(code, status, dept);
+        else addRowToTable(code, status, dept, notes);
     });
 }
 
@@ -265,18 +241,13 @@ function updateBulkUI() {
     document.getElementById('active_dept').innerText = bulkDept;
 }
 
-function exitBulkMode() {
-    bulkStatus = null;
-    bulkDept = null;
-    location.reload();
-}
+function exitBulkMode() { location.reload(); }
 
-function addRowToTable(code, status, dept) {
+function addRowToTable(code, status, dept, notes) {
     const tbody = document.getElementById('history_body');
-    const row = `<tr><td class="fw-bold">${code}</td><td><span class="badge bg-primary">${status}</span></td><td><span class="badge bg-secondary">${dept}</span></td></tr>`;
+    const row = `<tr><td class="fw-bold">${code}</td><td><span class="badge bg-primary">${status}</span></td><td><span class="badge bg-secondary">${dept}</span></td><td><span class="note-text">${notes || '-'}</span></td></tr>`;
     tbody.insertAdjacentHTML('afterbegin', row);
 }
 </script>
-
 </body>
 </html>
