@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import text # Added for migration
 from datetime import datetime
 import os
 import sys
@@ -17,7 +18,6 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# Database Model
 class InventoryScan(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(100), nullable=False)
@@ -28,14 +28,21 @@ class InventoryScan(db.Model):
     return_date = db.Column(db.String(50), nullable=True)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
+# --- SELF-HEALING MIGRATION BLOCK ---
 with app.app_context():
-    # Note: db.create_all() creates tables if they don't exist. 
-    # If you already have a table, you may need to drop it and restart to see new columns.
     db.create_all()
+    try:
+        # Check if department column exists, if not, add it
+        db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS department VARCHAR(50)"))
+        db.session.commit()
+        print("Database migration successful: 'department' column verified.", file=sys.stderr)
+    except Exception as e:
+        db.session.rollback()
+        print(f"Migration Notice: {e}", file=sys.stderr)
+# ------------------------------------
 
 @app.route('/')
 def index():
-    # Fetch 15 most recent scans
     recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(15).all()
     return render_template('index.html', scans=recent_scans)
 
@@ -56,6 +63,7 @@ def scanned():
         return jsonify({"status": "success"})
     except Exception as e:
         db.session.rollback()
+        # This will print the exact error to your server logs
         print(f"DATABASE ERROR: {str(e)}", file=sys.stderr)
         return jsonify({"status": "error", "message": str(e)}), 500
 
