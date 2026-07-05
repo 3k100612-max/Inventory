@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import text # Added for migration
+from sqlalchemy import text
 from datetime import datetime
 import os
 import sys
@@ -26,20 +26,19 @@ class InventoryScan(db.Model):
     person_id = db.Column(db.String(100), nullable=True)
     department = db.Column(db.String(50), nullable=True)
     return_date = db.Column(db.String(50), nullable=True)
+    notes = db.Column(db.Text, nullable=True) # <-- New Field
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
-# --- SELF-HEALING MIGRATION BLOCK ---
 with app.app_context():
     db.create_all()
     try:
-        # Check if department column exists, if not, add it
+        # Migration: Ensure both department and notes columns exist
         db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS department VARCHAR(50)"))
+        db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS notes TEXT"))
         db.session.commit()
-        print("Database migration successful: 'department' column verified.", file=sys.stderr)
     except Exception as e:
         db.session.rollback()
         print(f"Migration Notice: {e}", file=sys.stderr)
-# ------------------------------------
 
 @app.route('/')
 def index():
@@ -56,15 +55,14 @@ def scanned():
             person_name=data.get("person_name"),
             person_id=data.get("person_id"),
             department=data.get("department"),
-            return_date=data.get("return_date")
+            return_date=data.get("return_date"),
+            notes=data.get("notes") # <-- Save Notes
         )
         db.session.add(new_scan)
         db.session.commit()
         return jsonify({"status": "success"})
     except Exception as e:
         db.session.rollback()
-        # This will print the exact error to your server logs
-        print(f"DATABASE ERROR: {str(e)}", file=sys.stderr)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
