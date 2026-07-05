@@ -3,18 +3,49 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mobile Inventory Scanner</title>
+    <title>Universal Inventory Scanner</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- 1. Include the Barcode Library -->
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body { background-color: #f0f2f5; padding: 15px; font-family: 'Segoe UI', sans-serif; }
-        .card { border: none; border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.08); margin-bottom: 20px; }
-        #reader { width: 100%; border-radius: 12px; overflow: hidden; background: #000; }
+        .card { border: none; border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.08); margin-bottom: 20px; overflow: hidden; }
+        
+        /* --- SCANNER BOX & LASER --- */
+        #reader-container { position: relative; width: 100%; border-radius: 12px; overflow: hidden; background: #000; }
+        #reader { width: 100%; }
+        
+        /* The Scanning Laser Line */
+        .scanner-laser {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: rgba(255, 0, 0, 0.7);
+            box-shadow: 0 0 15px 2px rgba(255, 0, 0, 0.5);
+            z-index: 10;
+            display: none; /* Hidden until scanner starts */
+            animation: scan-move 2s infinite linear;
+        }
+
+        @keyframes scan-move {
+            0% { top: 0%; }
+            50% { top: 100%; }
+            100% { top: 0%; }
+        }
+
+        /* Success Flash Effect */
+        .flash-success {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(40, 167, 69, 0.4);
+            z-index: 20;
+            display: none;
+        }
+
         .bulk-indicator { display: none; background: #e7f3ff; border: 1px solid #bde0fe; border-radius: 8px; padding: 10px; margin-bottom: 15px; }
         .btn-group-custom { display: flex; flex-wrap: wrap; gap: 8px; }
         .btn-group-custom .btn { flex: 1 1 auto; border-radius: 8px !important; }
-        /* Style the scan button for mobile */
         .scan-btn { height: 60px; font-size: 1.2rem; font-weight: bold; }
     </style>
 </head>
@@ -36,14 +67,20 @@
     </div>
 
     <!-- CAMERA SCANNER CARD -->
-    <div class="card p-3">
-        <div id="reader" class="mb-3"></div>
-        <div class="d-grid gap-2">
-            <button id="start_btn" class="btn btn-primary scan-btn" onclick="startScanner()">Open Camera Scanner</button>
-            <button id="stop_btn" class="btn btn-secondary" onclick="stopScanner()" style="display:none;">Close Camera</button>
+    <div class="card">
+        <div id="reader-container">
+            <div id="reader"></div>
+            <div id="laser" class="scanner-laser"></div>
+            <div id="flash" class="flash-success"></div>
         </div>
-        <div class="mt-3">
-            <input type="text" id="item_code" class="form-control" placeholder="Or type code manually..." autocomplete="off">
+        <div class="p-3">
+            <div class="d-grid gap-2">
+                <button id="start_btn" class="btn btn-primary scan-btn" onclick="startScanner()">Open Camera Scanner</button>
+                <button id="stop_btn" class="btn btn-secondary" onclick="stopScanner()" style="display:none;">Close Camera</button>
+            </div>
+            <div class="mt-3">
+                <input type="text" id="item_code" class="form-control" placeholder="Manual entry..." autocomplete="off">
+            </div>
         </div>
     </div>
 
@@ -63,7 +100,7 @@
                     {% for scan in scans %}
                     <tr>
                         <td class="fw-bold">{{ scan.code }}</td>
-                        <td><span class="badge {% if scan.status == 'In Maintenance' %}bg-warning text-dark{% else %}bg-primary{% endif %}">{{ scan.status }}</span></td>
+                        <td><span class="badge {% if scan.status == 'In Maintenance' %}bg-warning text-dark{% elif scan.status == 'Retired' %}bg-danger{% else %}bg-primary{% endif %}">{{ scan.status }}</span></td>
                         <td><span class="badge bg-secondary">{{ scan.department or '-' }}</span></td>
                     </tr>
                     {% endfor %}
@@ -73,27 +110,26 @@
     </div>
 </div>
 
-<!-- MODAL: ONCE VS MULTIPLE -->
+<!-- MODALS REMAIN THE SAME AS PREVIOUS STEP -->
 <div class="modal fade" id="modeModal" data-bs-backdrop="static" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header"><h5 class="modal-title">Scanned: <span id="modal_code"></span></h5></div>
+            <div class="modal-header"><h5 class="modal-title">Scanned: <span id="modal_code" class="text-primary"></span></h5></div>
             <div class="modal-body text-center">
-                <p>Is this a single item or the start of a bulk scan?</p>
+                <p>Process this scan as:</p>
                 <div class="d-grid gap-3">
                     <button class="btn btn-outline-primary btn-lg" onclick="setupEntry('once')">Single Item (Once)</button>
-                    <button class="btn btn-outline-success btn-lg" onclick="setupEntry('multiple')">Multiple Items (Bulk)</button>
+                    <button class="btn btn-outline-success btn-lg" onclick="setupEntry('multiple')">Bulk Scan (Keep Going)</button>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- MODAL: DETAILS -->
 <div class="modal fade" id="detailsModal" data-bs-backdrop="static" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header"><h5 class="modal-title">Set Status & Dept</h5></div>
+            <div class="modal-header"><h5 class="modal-title">Set Global Details</h5></div>
             <div class="modal-body">
                 <label class="fw-bold mb-2">Status</label>
                 <div class="btn-group-custom mb-3">
@@ -105,10 +141,12 @@
                     <label class="btn btn-outline-primary" for="s3">In Stock</label>
                     <input type="radio" class="btn-check" name="m_status" id="s4" value="In Maintenance">
                     <label class="btn btn-outline-warning" for="s4">Repair</label>
+                    <input type="radio" class="btn-check" name="m_status" id="s5" value="Retired">
+                    <label class="btn btn-outline-danger" for="s5">Retired</label>
                 </div>
 
                 <label class="fw-bold mb-2">Department</label>
-                <div class="btn-group-custom mb-3">
+                <div class="btn-group-custom">
                     <input type="radio" class="btn-check" name="m_dept" id="d1" value="IT" checked>
                     <label class="btn btn-outline-secondary" for="d1">IT</label>
                     <input type="radio" class="btn-check" name="m_dept" id="d2" value="HR">
@@ -139,13 +177,28 @@ let bulkDept = null;
 const modeModal = new bootstrap.Modal(document.getElementById('modeModal'));
 const detailsModal = new bootstrap.Modal(document.getElementById('detailsModal'));
 
-// --- SCANNER LOGIC ---
 function startScanner() {
     document.getElementById('start_btn').style.display = 'none';
     document.getElementById('stop_btn').style.display = 'block';
+    document.getElementById('laser').style.display = 'block'; // Show Laser
     
     html5QrCode = new Html5Qrcode("reader");
-    const config = { fps: 10, qrbox: { width: 250, height: 150 } };
+    
+    // CONFIG: Support QR, Barcodes, EAN, UPC, etc.
+    const config = { 
+        fps: 15, 
+        qrbox: { width: 280, height: 180 },
+        aspectRatio: 1.0,
+        // Explicitly support all formats
+        formatsToSupport: [ 
+            Html5QrcodeSupportedFormats.QR_CODE,
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.UPC_E,
+            Html5QrcodeSupportedFormats.CODE_39
+        ]
+    };
 
     html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess);
 }
@@ -155,35 +208,28 @@ function stopScanner() {
         html5QrCode.stop().then(() => {
             document.getElementById('start_btn').style.display = 'block';
             document.getElementById('stop_btn').style.display = 'none';
+            document.getElementById('laser').style.display = 'none';
         });
     }
 }
 
 function onScanSuccess(decodedText) {
-    // Vibrate phone on success
+    // 1. Visual/Haptic Feedback
     if (navigator.vibrate) navigator.vibrate(100);
-    
+    const flash = document.getElementById('flash');
+    flash.style.display = 'block';
+    setTimeout(() => flash.style.display = 'none', 200);
+
     currentCode = decodedText;
     
     if (bulkStatus) {
-        // Instant save if Bulk Mode is already set
         quickSave(currentCode, bulkStatus, bulkDept);
     } else {
-        // First scan: Ask for Mode
         document.getElementById('modal_code').innerText = currentCode;
         modeModal.show();
     }
 }
 
-// Support manual typing as well
-document.getElementById('item_code').addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') {
-        onScanSuccess(this.value);
-        this.value = '';
-    }
-});
-
-// --- WORKFLOW LOGIC ---
 function setupEntry(mode) {
     scanMode = mode;
     modeModal.hide();
@@ -193,13 +239,11 @@ function setupEntry(mode) {
 function processSave() {
     const status = document.querySelector('input[name="m_status"]:checked').value;
     const dept = document.querySelector('input[name="m_dept"]:checked').value;
-
     if (scanMode === 'multiple') {
         bulkStatus = status;
         bulkDept = dept;
         updateBulkUI();
     }
-
     quickSave(currentCode, status, dept);
     detailsModal.hide();
 }
