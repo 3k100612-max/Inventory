@@ -17,13 +17,14 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# Updated Database Model
+# Database Model with Department added
 class InventoryScan(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(100), nullable=False)
     status = db.Column(db.String(50), nullable=False)
     person_name = db.Column(db.String(100), nullable=True)
     person_id = db.Column(db.String(100), nullable=True)
+    department = db.Column(db.String(50), nullable=True) # New Field
     return_date = db.Column(db.String(50), nullable=True)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -45,11 +46,11 @@ def scanned():
             status=data.get("status"),
             person_name=data.get("person_name"),
             person_id=data.get("person_id"),
+            department=data.get("department"), # Save Department
             return_date=data.get("return_date")
         )
         db.session.add(new_scan)
         db.session.commit()
-        print(f"DEBUG: Saved {data.get('code')} as {data.get('status')}", file=sys.stderr)
         return jsonify({"status": "success"})
     except Exception as e:
         db.session.rollback()
