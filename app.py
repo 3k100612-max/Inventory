@@ -17,23 +17,25 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# Database Model with Department added
+# Database Model
 class InventoryScan(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(100), nullable=False)
     status = db.Column(db.String(50), nullable=False)
     person_name = db.Column(db.String(100), nullable=True)
     person_id = db.Column(db.String(100), nullable=True)
-    department = db.Column(db.String(50), nullable=True) # New Field
+    department = db.Column(db.String(50), nullable=True)
     return_date = db.Column(db.String(50), nullable=True)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
 with app.app_context():
+    # Note: db.create_all() creates tables if they don't exist. 
+    # If you already have a table, you may need to drop it and restart to see new columns.
     db.create_all()
 
 @app.route('/')
 def index():
-    # Fetch 15 most recent scans to show in the table
+    # Fetch 15 most recent scans
     recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(15).all()
     return render_template('index.html', scans=recent_scans)
 
@@ -46,7 +48,7 @@ def scanned():
             status=data.get("status"),
             person_name=data.get("person_name"),
             person_id=data.get("person_id"),
-            department=data.get("department"), # Save Department
+            department=data.get("department"),
             return_date=data.get("return_date")
         )
         db.session.add(new_scan)
