@@ -26,15 +26,17 @@ class InventoryScan(db.Model):
     person_id = db.Column(db.String(100), nullable=True)
     department = db.Column(db.String(50), nullable=True)
     return_date = db.Column(db.String(50), nullable=True)
-    notes = db.Column(db.Text, nullable=True) # <-- New Field
+    notes = db.Column(db.Text, nullable=True)
+    is_flagged = db.Column(db.Boolean, default=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
 with app.app_context():
     db.create_all()
     try:
-        # Migration: Ensure both department and notes columns exist
+        # Migration: Add columns if they don't exist
         db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS department VARCHAR(50)"))
         db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS notes TEXT"))
+        db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN DEFAULT FALSE"))
         db.session.commit()
     except Exception as e:
         db.session.rollback()
@@ -48,19 +50,40 @@ def index():
 @app.route('/scanned', methods=['POST'])
 def scanned():
     data = request.json
+    code = data.get("code")
+    status = data.get("status")
+    
     try:
+        # REPAIR LOGIC: Count previous "In Maintenance" entries for this code
+        repair_count = InventoryScan.query.filter_by(code=code, status='In Maintenance').count()
+        
+        flag_it = False
+        warning_msg = None
+        
+        if status == 'In Maintenance':
+            # If this is the 3rd time or more (already 2 in DB)
+            if repair_count >= 2:
+                flag_it = True
+                warning_msg = f"ALERT: Item {code} has been sent for repair {repair_count + 1} times! It has been flagged."
+
         new_scan = InventoryScan(
-            code=data.get("code"),
-            status=data.get("status"),
+            code=code,
+            status=status,
             person_name=data.get("person_name"),
             person_id=data.get("person_id"),
             department=data.get("department"),
             return_date=data.get("return_date"),
-            notes=data.get("notes") # <-- Save Notes
+            notes=data.get("notes"),
+            is_flagged=flag_it
         )
         db.session.add(new_scan)
         db.session.commit()
-        return jsonify({"status": "success"})
+        
+        return jsonify({
+            "status": "success", 
+            "is_flagged": flag_it, 
+            "warning": warning_msg
+        })
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
