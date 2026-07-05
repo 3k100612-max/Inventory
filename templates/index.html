@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inventory Management System</title>
+    <title>Inventory Flow Control</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background-color: #f0f2f5; padding: 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #f0f2f5; padding: 20px; font-family: 'Segoe UI', sans-serif; }
         .card { border: none; border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.08); margin-bottom: 20px; }
-        .table thead { background-color: #e9ecef; }
         .btn-check:checked + .btn-outline-primary { background-color: #0d6efd; color: white; }
-        .btn-check:checked + .btn-outline-warning { background-color: #ffc107; color: black; border-color: #ffc107; }
-        .btn-check:checked + .btn-outline-danger { background-color: #dc3545; color: white; border-color: #dc3545; }
+        .btn-check:checked + .btn-outline-warning { background-color: #ffc107; color: black; }
+        .btn-check:checked + .btn-outline-danger { background-color: #dc3545; color: white; }
+        .bulk-indicator { display: none; background: #e7f3ff; border: 1px solid #bde0fe; border-radius: 8px; padding: 10px; margin-bottom: 15px; }
         .btn-group-custom { display: flex; flex-wrap: wrap; gap: 8px; }
         .btn-group-custom .btn { flex: 1 1 auto; border-radius: 8px !important; }
     </style>
@@ -19,81 +19,28 @@
 <body>
 
 <div class="container">
-    <h1 class="text-center mb-4">Inventory Flow Control</h1>
+    <h1 class="text-center mb-4">Inventory Flow</h1>
 
-    <!-- SCAN FORM CARD -->
-    <div class="card p-4">
-        <h4 class="mb-3 text-primary">New Inventory Scan</h4>
-        
-        <div class="mb-3">
-            <label class="form-label fw-bold">Item Code (Barcode)</label>
-            <input type="text" id="item_code" class="form-control form-control-lg" placeholder="Scan item barcode here..." autofocus>
+    <!-- BULK MODE INDICATOR -->
+    <div id="bulk_indicator" class="bulk-indicator">
+        <div class="d-flex justify-content-between align-items-center">
+            <span><strong>Bulk Mode Active:</strong> Status: <span id="active_status" class="badge bg-primary"></span> | Dept: <span id="active_dept" class="badge bg-secondary"></span></span>
+            <button class="btn btn-sm btn-danger" onclick="exitBulkMode()">Stop Bulk Scan</button>
         </div>
-
-        <!-- STATUS SELECTION -->
-        <div class="mb-3">
-            <label class="form-label fw-bold">Current Status</label>
-            <div class="btn-group-custom" role="group">
-                <input type="radio" class="btn-check" name="status" id="s_inuse" value="In Use" checked>
-                <label class="btn btn-outline-primary" for="s_inuse">In Use</label>
-                
-                <input type="radio" class="btn-check" name="status" id="s_loaned" value="Loaned">
-                <label class="btn btn-outline-primary" for="s_loaned">Loaned</label>
-                
-                <input type="radio" class="btn-check" name="status" id="s_stock" value="In Stock">
-                <label class="btn btn-outline-primary" for="s_stock">In Stock</label>
-
-                <input type="radio" class="btn-check" name="status" id="s_maint" value="In Maintenance">
-                <label class="btn btn-outline-warning" for="s_maint">In Maintenance</label>
-
-                <input type="radio" class="btn-check" name="status" id="s_retired" value="Retired">
-                <label class="btn btn-outline-danger" for="s_retired">Retired</label>
-            </div>
-        </div>
-
-        <!-- DEPARTMENT SELECTION -->
-        <div class="mb-4">
-            <label class="form-label fw-bold">Department</label>
-            <div class="btn-group-custom" role="group">
-                <input type="radio" class="btn-check" name="dept" id="d_it" value="IT" checked>
-                <label class="btn btn-outline-secondary" for="d_it">IT</label>
-
-                <input type="radio" class="btn-check" name="dept" id="d_hr" value="HR">
-                <label class="btn btn-outline-secondary" for="d_hr">HR</label>
-
-                <input type="radio" class="btn-check" name="dept" id="d_fin" value="Finance">
-                <label class="btn btn-outline-secondary" for="d_fin">Finance</label>
-
-                <input type="radio" class="btn-check" name="dept" id="d_proc" value="Procurement">
-                <label class="btn btn-outline-secondary" for="d_proc">Procurement</label>
-
-                <input type="radio" class="btn-check" name="dept" id="d_admin" value="Admin">
-                <label class="btn btn-outline-secondary" for="d_admin">Admin</label>
-            </div>
-        </div>
-
-        <div class="row">
-            <div class="col-md-6 mb-3">
-                <label class="form-label">User Name</label>
-                <input type="text" id="person_name" class="form-control" placeholder="Optional">
-            </div>
-            <div class="col-md-6 mb-3">
-                <label class="form-label">User ID</label>
-                <input type="text" id="person_id" class="form-control" placeholder="Optional">
-            </div>
-        </div>
-
-        <div class="mb-4">
-            <label class="form-label">Expected Return Date</label>
-            <input type="date" id="return_date" class="form-control">
-        </div>
-
-        <button onclick="saveScan()" class="btn btn-success btn-lg w-100 shadow-sm">Confirm & Save Entry</button>
+        <small class="text-muted">Ready for next scan... just pull the trigger.</small>
     </div>
 
-    <!-- HISTORY TABLE CARD -->
+    <!-- SCAN INPUT CARD -->
     <div class="card p-4">
-        <h4 class="mb-3">Recent Activity Log</h4>
+        <div class="mb-3">
+            <label class="form-label fw-bold">Scan Item Barcode</label>
+            <input type="text" id="item_code" class="form-control form-control-lg" placeholder="Waiting for scan..." autofocus autocomplete="off">
+        </div>
+    </div>
+
+    <!-- HISTORY TABLE -->
+    <div class="card p-4">
+        <h4 class="mb-3">Recent Activity</h4>
         <div class="table-responsive">
             <table class="table table-hover align-middle">
                 <thead>
@@ -101,28 +48,18 @@
                         <th>Item Code</th>
                         <th>Status</th>
                         <th>Department</th>
-                        <th>Assigned User</th>
-                        <th>Return Date</th>
+                        <th>User</th>
+                        <th>Timestamp</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="history_body">
                     {% for scan in scans %}
                     <tr>
                         <td class="fw-bold">{{ scan.code }}</td>
-                        <td>
-                            {% if scan.status == 'In Maintenance' %}
-                                <span class="badge bg-warning text-dark">{{ scan.status }}</span>
-                            {% elif scan.status == 'Retired' %}
-                                <span class="badge bg-danger">{{ scan.status }}</span>
-                            {% elif scan.status == 'In Stock' %}
-                                <span class="badge bg-success">{{ scan.status }}</span>
-                            {% else %}
-                                <span class="badge bg-primary">{{ scan.status }}</span>
-                            {% endif %}
-                        </td>
+                        <td><span class="badge {% if scan.status == 'In Maintenance' %}bg-warning text-dark{% elif scan.status == 'Retired' %}bg-danger{% else %}bg-primary{% endif %}">{{ scan.status }}</span></td>
                         <td><span class="badge bg-secondary">{{ scan.department or 'N/A' }}</span></td>
-                        <td>{{ scan.person_name or '-' }} {% if scan.person_id %}<small class="text-muted">({{ scan.person_id }})</small>{% endif %}</td>
-                        <td>{{ scan.return_date or '-' }}</td>
+                        <td>{{ scan.person_name or '-' }}</td>
+                        <td><small class="text-muted">{{ scan.timestamp.strftime('%H:%M:%S') }}</small></td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -131,46 +68,168 @@
     </div>
 </div>
 
-<script>
-function saveScan() {
-    const code = document.getElementById('item_code').value;
-    const status = document.querySelector('input[name="status"]:checked').value;
-    const department = document.querySelector('input[name="dept"]:checked').value;
-    const person_name = document.getElementById('person_name').value;
-    const person_id = document.getElementById('person_id').value;
-    const return_date = document.getElementById('return_date').value;
+<!-- MODAL: CHOOSE SCAN MODE -->
+<div class="modal fade" id="modeModal" data-bs-backdrop="static" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Item Scanned: <span id="modal_code" class="text-primary"></span></h5>
+            </div>
+            <div class="modal-body">
+                <p>How would you like to process this scan?</p>
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-primary btn-lg" onclick="setupEntry('once')">Single Entry (Once)</button>
+                    <button class="btn btn-outline-success btn-lg" onclick="setupEntry('multiple')">Multiple Entries (Bulk)</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
-    if (!code) {
-        alert("Please enter or scan an item code.");
-        return;
+<!-- MODAL: SET DETAILS -->
+<div class="modal fade" id="detailsModal" data-bs-backdrop="static" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Select Status & Department</h5>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Status</label>
+                    <div class="btn-group-custom" role="group">
+                        <input type="radio" class="btn-check" name="m_status" id="ms_inuse" value="In Use" checked>
+                        <label class="btn btn-outline-primary" for="ms_inuse">In Use</label>
+                        <input type="radio" class="btn-check" name="m_status" id="ms_loaned" value="Loaned">
+                        <label class="btn btn-outline-primary" for="ms_loaned">Loaned</label>
+                        <input type="radio" class="btn-check" name="m_status" id="ms_stock" value="In Stock">
+                        <label class="btn btn-outline-primary" for="ms_stock">In Stock</label>
+                        <input type="radio" class="btn-check" name="m_status" id="ms_maint" value="In Maintenance">
+                        <label class="btn btn-outline-warning" for="ms_maint">In Maintenance</label>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Department</label>
+                    <div class="btn-group-custom" role="group">
+                        <input type="radio" class="btn-check" name="m_dept" id="md_it" value="IT" checked>
+                        <label class="btn btn-outline-secondary" for="md_it">IT</label>
+                        <input type="radio" class="btn-check" name="m_dept" id="md_hr" value="HR">
+                        <label class="btn btn-outline-secondary" for="md_hr">HR</label>
+                        <input type="radio" class="btn-check" name="m_dept" id="md_fin" value="Finance">
+                        <label class="btn btn-outline-secondary" for="md_fin">Finance</label>
+                        <input type="radio" class="btn-check" name="m_dept" id="md_proc" value="Procurement">
+                        <label class="btn btn-outline-secondary" for="md_proc">Procurement</label>
+                        <input type="radio" class="btn-check" name="m_dept" id="md_admin" value="Admin">
+                        <label class="btn btn-outline-secondary" for="md_admin">Admin</label>
+                    </div>
+                </div>
+
+                <div id="single_only_fields">
+                    <div class="mb-3"><label class="form-label">User Name</label><input type="text" id="m_name" class="form-control"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-success w-100" onclick="processSave()">Confirm & Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+let currentCode = "";
+let scanMode = "once"; // 'once' or 'multiple'
+let bulkStatus = null;
+let bulkDept = null;
+
+const modeModal = new bootstrap.Modal(document.getElementById('modeModal'));
+const detailsModal = new bootstrap.Modal(document.getElementById('detailsModal'));
+const inputField = document.getElementById('item_code');
+
+// 1. Listen for Scanner (Enter key)
+inputField.addEventListener('keypress', function (e) {
+    if (e.key === 'Enter') {
+        currentCode = this.value;
+        this.value = ''; // Clear for next scan
+        
+        if (bulkStatus) {
+            // Auto-save if in Bulk Mode
+            quickSave(currentCode, bulkStatus, bulkDept);
+        } else {
+            // Ask for mode if first scan
+            document.getElementById('modal_code').innerText = currentCode;
+            modeModal.show();
+        }
+    }
+});
+
+// 2. Setup Entry Mode
+function setupEntry(mode) {
+    scanMode = mode;
+    modeModal.hide();
+    
+    // Hide name field for bulk to speed things up
+    document.getElementById('single_only_fields').style.display = (mode === 'multiple') ? 'none' : 'block';
+    detailsModal.show();
+}
+
+// 3. Save Logic
+function processSave() {
+    const status = document.querySelector('input[name="m_status"]:checked').value;
+    const dept = document.querySelector('input[name="m_dept"]:checked').value;
+    const name = document.getElementById('m_name').value;
+
+    if (scanMode === 'multiple') {
+        bulkStatus = status;
+        bulkDept = dept;
+        updateBulkUI();
     }
 
-    const data = {
-        code: code,
-        status: status,
-        department: department,
-        person_name: person_name,
-        person_id: person_id,
-        return_date: return_date
-    };
+    quickSave(currentCode, status, dept, name);
+    detailsModal.hide();
+}
 
+function quickSave(code, status, dept, name = "") {
     fetch('/scanned', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-    })
-    .then(res => res.json())
-    .then(result => {
-        if (result.status === "success") {
-            location.reload();
-        } else {
-            alert("Error saving scan: " + result.message);
-        }
-    })
-    .catch(err => {
-        console.error(err);
-        alert("Server communication error.");
+        body: JSON.stringify({
+            code: code,
+            status: status,
+            department: dept,
+            person_name: name
+        })
+    }).then(() => {
+        if (scanMode === 'once') location.reload();
+        else refreshHistoryTable(code, status, dept); // Don't reload in bulk mode to keep speed
     });
+}
+
+function updateBulkUI() {
+    document.getElementById('bulk_indicator').style.display = 'block';
+    document.getElementById('active_status').innerText = bulkStatus;
+    document.getElementById('active_dept').innerText = bulkDept;
+    inputField.focus();
+}
+
+function exitBulkMode() {
+    bulkStatus = null;
+    bulkDept = null;
+    document.getElementById('bulk_indicator').style.display = 'none';
+    location.reload();
+}
+
+function refreshHistoryTable(code, status, dept) {
+    const tbody = document.getElementById('history_body');
+    const row = `<tr>
+        <td class="fw-bold">${code}</td>
+        <td><span class="badge bg-primary">${status}</span></td>
+        <td><span class="badge bg-secondary">${dept}</span></td>
+        <td>-</td>
+        <td><small class="text-muted">Just now</small></td>
+    </tr>`;
+    tbody.insertAdjacentHTML('afterbegin', row);
+    inputField.focus();
 }
 </script>
 
