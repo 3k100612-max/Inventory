@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import text, func
+from sqlalchemy import text
 from datetime import datetime
 import os
 import sys
@@ -31,21 +31,17 @@ class InventoryScan(db.Model):
     is_flagged = db.Column(db.Boolean, default=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
-def run_maintenance():
-    """
-    Scans the entire database to ensure flags are accurate.
-    This is much more efficient than looping in Python.
-    """
+def run_global_maintenance():
+    """Scans the entire database for overdue items and flags them."""
     with app.app_context():
         try:
             today = datetime.now().date()
-            # 1. Bulk Flag all Overdue Loans across the whole table
+            # Bulk update: Flag all items where status is Loaned and date is past
             InventoryScan.query.filter(
                 InventoryScan.status == 'Loaned',
                 InventoryScan.return_date < today,
                 InventoryScan.is_flagged == False
             ).update({InventoryScan.is_flagged: True}, synchronize_session=False)
-            
             db.session.commit()
         except Exception as e:
             db.session.rollback()
@@ -54,21 +50,17 @@ def run_maintenance():
 def init_db():
     with app.app_context():
         db.create_all()
-        # Ensure all columns exist (Migrations)
+        # Ensure all columns exist for new features
         cols = ["device_type", "person_name", "email", "return_date", "is_flagged", "timestamp"]
         for col in cols:
             try:
-                # Basic check/add logic
                 db.session.execute(text(f"ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS {col} VARCHAR"))
                 db.session.commit()
             except: db.session.rollback()
 
 @app.route('/')
 def index():
-    # Run a global scan for overdue items every time the dashboard is loaded
-    run_maintenance()
-    
-    # Fetch the data for the UI
+    run_global_maintenance() # Scan every row for flags on load
     recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(50).all()
     return render_template('index.html', scans=recent_scans)
 
@@ -79,7 +71,6 @@ def scanned():
     status = data.get("status")
     r_date_str = data.get("return_date")
     
-    # Date parsing with safety
     r_date = None
     if r_date_str and r_date_str.strip():
         try:
@@ -87,10 +78,9 @@ def scanned():
         except: r_date = None
     
     try:
-        # Check repeat repairs: Scan DB for existing repair records for this specific item
+        # Check repair history for this specific code
         repair_count = InventoryScan.query.filter_by(code=code, status='Repair').count()
         
-        # Determine flag status
         flag_it = False
         if status == 'Repair' and repair_count >= 2:
             flag_it = True
