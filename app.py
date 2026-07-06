@@ -24,7 +24,9 @@ class InventoryScan(db.Model):
     device_type = db.Column(db.String(50))
     peripheral_detail = db.Column(db.String(100))
     status = db.Column(db.String(50), nullable=False)
-    department = db.Column(db.String(50), nullable=True)
+    person_name = db.Column(db.String(100), nullable=True)
+    email = db.Column(db.String(120), nullable=True)
+    return_date = db.Column(db.Date, nullable=True)
     notes = db.Column(db.Text, nullable=True)
     is_flagged = db.Column(db.Boolean, default=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
@@ -32,11 +34,15 @@ class InventoryScan(db.Model):
 with app.app_context():
     db.create_all()
     try:
-        # Migration: Ensure all new columns exist in the database
+        # Migration: Ensure all monitoring and loan columns exist
         db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS device_type VARCHAR(50)"))
         db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS peripheral_detail VARCHAR(100)"))
+        db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS person_name VARCHAR(100)"))
+        db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS email VARCHAR(120)"))
+        db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS return_date DATE"))
         db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS notes TEXT"))
         db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN DEFAULT FALSE"))
+        db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP"))
         db.session.commit()
     except Exception as e:
         db.session.rollback()
@@ -44,8 +50,17 @@ with app.app_context():
 
 @app.route('/')
 def index():
-    # Fetch recent history
-    recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(15).all()
+    # Fetch recent history, newest first
+    recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(20).all()
+    
+    # Logic to flag overdue items on page load
+    today = datetime.now().date()
+    for scan in recent_scans:
+        if scan.status == 'Loaned' and scan.return_date and scan.return_date < today:
+            if not scan.is_flagged:
+                scan.is_flagged = True
+                db.session.commit()
+    
     return render_template('index.html', scans=recent_scans)
 
 @app.route('/scanned', methods=['POST'])
@@ -53,36 +68,35 @@ def scanned():
     data = request.json
     code = data.get("code")
     status = data.get("status")
+    r_date_str = data.get("return_date")
+    
+    # Date conversion
+    r_date = datetime.strptime(r_date_str, '%Y-%m-%d').date() if r_date_str else None
     
     try:
-        # Flagging logic: Check if this item has been sent for "Repair" before
+        # Flagging Logic 1: Frequent Repairs (3rd time+)
         repair_count = InventoryScan.query.filter_by(code=code, status='Repair').count()
+        flag_it = (status == 'Repair' and repair_count >= 2)
         
-        flag_it = False
-        warning_msg = None
-        
-        if status == 'Repair':
-            # If this is the 3rd time or more (already 2 in DB)
-            if repair_count >= 2:
-                flag_it = True
-                warning_msg = f"ALERT: Item {code} has been sent for repair {repair_count + 1} times! It has been flagged."
+        # Flagging Logic 2: Immediate overdue detection
+        if status == 'Loaned' and r_date and r_date < datetime.now().date():
+            flag_it = True
 
         new_scan = InventoryScan(
             code=code,
             device_type=data.get("device_type"),
             peripheral_detail=data.get("peripheral_detail"),
             status=status,
+            person_name=data.get("person_name"),
+            email=data.get("email"),
+            return_date=r_date,
             notes=data.get("notes"),
             is_flagged=flag_it
         )
         db.session.add(new_scan)
         db.session.commit()
         
-        return jsonify({
-            "status": "success", 
-            "is_flagged": flag_it, 
-            "warning": warning_msg
-        })
+        return jsonify({"status": "success", "is_flagged": flag_it})
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
