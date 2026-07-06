@@ -1,13 +1,13 @@
 from flask import Flask, render_template, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 import sys
 
 app = Flask(__name__)
 
-# Database Configuration - Ensure these match your environment
+# Database Configuration
 DB_USER = os.environ.get('DB_USER', 'postgres')
 DB_PASS = os.environ.get('DB_PASS', 'P12345')
 DB_HOST = os.environ.get('DB_HOST', 'inventory-inventory-sqaoox')
@@ -21,7 +21,7 @@ db = SQLAlchemy(app)
 
 class InventoryScan(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    code = db.Column(db.String(100), nullable=False) # Serial Number
+    code = db.Column(db.String(100), nullable=False) 
     imei = db.Column(db.String(100), nullable=True)
     mac_address = db.Column(db.String(100), nullable=True)
     device_type = db.Column(db.String(50))
@@ -33,12 +33,12 @@ class InventoryScan(db.Model):
     return_date = db.Column(db.Date, nullable=True)
     notes = db.Column(db.Text, nullable=True)
     is_flagged = db.Column(db.Boolean, default=False)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
 def run_global_maintenance():
     """Scans for overdue items safely."""
     try:
-        today = datetime.now().date()
+        today = datetime.now(timezone.utc).date()
         InventoryScan.query.filter(
             InventoryScan.status == 'Loaned',
             InventoryScan.return_date < today,
@@ -50,29 +50,43 @@ def run_global_maintenance():
         print(f"Maintenance Error: {e}", file=sys.stderr)
 
 def init_db():
-    """Initializes the database without crashing the app on error."""
+    """Initializes the database with correct SQL types."""
     with app.app_context():
         try:
             db.create_all()
-            # List of all columns that should exist
-            cols = ["imei", "mac_address", "device_type", "department", "person_name", "email", "return_date", "is_flagged", "timestamp"]
-            for col in cols:
+            # Map columns to their correct PostgreSQL types
+            col_types = {
+                "imei": "VARCHAR(100)",
+                "mac_address": "VARCHAR(100)",
+                "device_type": "VARCHAR(50)",
+                "department": "VARCHAR(50)",
+                "person_name": "VARCHAR(100)",
+                "email": "VARCHAR(120)",
+                "return_date": "DATE",
+                "is_flagged": "BOOLEAN DEFAULT FALSE",
+                "timestamp": "TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"
+            }
+            
+            for col, sql_type in col_types.items():
                 try:
-                    # Use individual try-except so one column failure doesn't stop the rest
-                    db.session.execute(text(f"ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS {col} VARCHAR"))
+                    db.session.execute(text(f"ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS {col} {sql_type}"))
                     db.session.commit()
                 except Exception as col_err:
                     db.session.rollback()
-                    print(f"Notice: Column {col} check/add result: {col_err}", file=sys.stderr)
+                    print(f"Notice: Column {col} check result: {col_err}", file=sys.stderr)
             print("Database initialization completed.")
         except Exception as e:
             print(f"Critical DB Init Error: {e}", file=sys.stderr)
 
 @app.route('/')
 def index():
-    run_global_maintenance()
-    recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(100).all()
-    return render_template('index.html', scans=recent_scans)
+    try:
+        run_global_maintenance()
+        recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(100).all()
+        return render_template('index.html', scans=recent_scans)
+    except Exception as e:
+        # Returns the actual error message to the browser for debugging
+        return f"Database Error: {str(e)}", 500
 
 @app.route('/scanned', methods=['POST'])
 def scanned():
@@ -85,14 +99,17 @@ def scanned():
     if r_date_str and r_date_str.strip():
         try:
             r_date = datetime.strptime(r_date_str, '%Y-%m-%d').date()
-        except: r_date = None
+        except: 
+            r_date = None
     
     try:
         repair_count = InventoryScan.query.filter_by(code=code, status='Repair').count()
         flag_it = False
+        today = datetime.now(timezone.utc).date()
+        
         if status == 'Repair' and repair_count >= 2:
             flag_it = True
-        elif status == 'Loaned' and r_date and r_date < datetime.now().date():
+        elif status == 'Loaned' and r_date and r_date < today:
             flag_it = True
 
         new_scan = InventoryScan(
@@ -131,6 +148,5 @@ def delete_scans():
 
 if __name__ == '__main__':
     init_db()
-    # Using environment PORT for better compatibility with cloud hosts
     port = int(os.environ.get("PORT", 8506))
     app.run(host='0.0.0.0', port=port)
