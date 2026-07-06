@@ -60,11 +60,15 @@ def setup_on_first_run():
         db.create_all()
         if not Admin.query.filter_by(username='admin').first():
             hpw = generate_password_hash('admin123')
-            db.add(Admin(username='admin', password_hash=hpw, role='super_admin'))
-            db.commit()
-            print(">>> Database initialized and Admin created.")
-    except Exception as e:
-        print(f">>> CRITICAL: Could not connect to DB: {e}", file=sys.stderr)
+
+            admin = Admin(
+            username='admin',
+            password_hash=hpw,
+            role='super_admin'
+            )
+
+        db.session.add(admin)
+        db.session.commit()
 
 # --- ROUTES ---
 @app.route('/health')
