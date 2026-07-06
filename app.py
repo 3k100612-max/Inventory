@@ -59,7 +59,7 @@ def setup_database():
             # This creates all tables defined in models if they don't exist
             db.create_all()
             # Check if the Admin table actually has a Super Admin
-            if not Admin.query.filter_by(username='admin').first():
+            if Admin.query.filter_by(username='admin').first():
                 hpw = generate_password_hash('admin123')
                 super_user = Admin(id=1,username='admin', password_hash=hpw, role='super_admin')
                 db.session.add(super_user)
