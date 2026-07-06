@@ -62,8 +62,8 @@ def setup_database():
             if not Admin.query.filter_by(username='admin').first():
                 hpw = generate_password_hash('admin123')
                 super_user = Admin(id=1,username='admin', password_hash=hpw, role='super_admin')
-                db.add(super_user)
-                db.commit()
+                db.session.add(super_user)
+                db.session.commit()
                 print(">>> Default Super Admin created (admin / admin123)")
         except Exception as e:
             print(f">>> DATABASE SETUP ERROR: {e}", file=sys.stderr)
