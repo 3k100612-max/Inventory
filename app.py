@@ -21,11 +21,10 @@ db = SQLAlchemy(app)
 class InventoryScan(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(100), nullable=False)
+    device_type = db.Column(db.String(50))
+    peripheral_detail = db.Column(db.String(100))
     status = db.Column(db.String(50), nullable=False)
-    person_name = db.Column(db.String(100), nullable=True)
-    person_id = db.Column(db.String(100), nullable=True)
     department = db.Column(db.String(50), nullable=True)
-    return_date = db.Column(db.String(50), nullable=True)
     notes = db.Column(db.Text, nullable=True)
     is_flagged = db.Column(db.Boolean, default=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
@@ -33,8 +32,9 @@ class InventoryScan(db.Model):
 with app.app_context():
     db.create_all()
     try:
-        # Migration: Add columns if they don't exist
-        db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS department VARCHAR(50)"))
+        # Migration: Ensure all new columns exist in the database
+        db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS device_type VARCHAR(50)"))
+        db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS peripheral_detail VARCHAR(100)"))
         db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS notes TEXT"))
         db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN DEFAULT FALSE"))
         db.session.commit()
@@ -44,6 +44,7 @@ with app.app_context():
 
 @app.route('/')
 def index():
+    # Fetch recent history
     recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(15).all()
     return render_template('index.html', scans=recent_scans)
 
@@ -54,13 +55,13 @@ def scanned():
     status = data.get("status")
     
     try:
-        # REPAIR LOGIC: Count previous "In Maintenance" entries for this code
-        repair_count = InventoryScan.query.filter_by(code=code, status='In Maintenance').count()
+        # Flagging logic: Check if this item has been sent for "Repair" before
+        repair_count = InventoryScan.query.filter_by(code=code, status='Repair').count()
         
         flag_it = False
         warning_msg = None
         
-        if status == 'In Maintenance':
+        if status == 'Repair':
             # If this is the 3rd time or more (already 2 in DB)
             if repair_count >= 2:
                 flag_it = True
@@ -68,11 +69,9 @@ def scanned():
 
         new_scan = InventoryScan(
             code=code,
+            device_type=data.get("device_type"),
+            peripheral_detail=data.get("peripheral_detail"),
             status=status,
-            person_name=data.get("person_name"),
-            person_id=data.get("person_id"),
-            department=data.get("department"),
-            return_date=data.get("return_date"),
             notes=data.get("notes"),
             is_flagged=flag_it
         )
