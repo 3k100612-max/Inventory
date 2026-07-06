@@ -10,7 +10,7 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'super-secret-inventory-key')
 
 # --- DATABASE CONFIGURATION ---
-# IMPORTANT: If running locally, change DB_HOST to 'localhost'
+# If running locally, change DB_HOST to 'localhost'
 DB_USER = os.environ.get('DB_USER', 'postgres')
 DB_PASS = os.environ.get('DB_PASS', 'P12345')
 DB_HOST = os.environ.get('DB_HOST', 'inventory-inventory-sqaoox') 
@@ -51,23 +51,25 @@ class InventoryScan(db.Model):
 def load_user(user_id):
     return Admin.query.get(int(user_id))
 
-# --- DATABASE INITIALIZATION ---
-def setup_database():
-    with app.app_context():
-        try:
-            db.create_all()
-            if not Admin.query.filter_by(username='admin').first():
-                hpw = generate_password_hash('admin123')
-                db.add(Admin(username='admin', password_hash=hpw, role='super_admin'))
-                db.commit()
-                print(">>> Admin table created and default user added.")
-        except Exception as e:
-            print(f">>> DB ERROR: {e}", file=sys.stderr)
+# --- AUTO-SETUP TABLES ON FIRST REQUEST ---
+@app.before_request
+def setup_on_first_run():
+    # Remove this function after it runs once
+    app.before_request_funcs[None].remove(setup_on_first_run)
+    try:
+        db.create_all()
+        if not Admin.query.filter_by(username='admin').first():
+            hpw = generate_password_hash('admin123')
+            db.add(Admin(username='admin', password_hash=hpw, role='super_admin'))
+            db.commit()
+            print(">>> Database initialized and Admin created.")
+    except Exception as e:
+        print(f">>> CRITICAL: Could not connect to DB: {e}", file=sys.stderr)
 
 # --- ROUTES ---
 @app.route('/health')
 def health():
-    return "OK", 200
+    return "App is running", 200
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -78,8 +80,7 @@ def login():
                 login_user(user)
                 return redirect(url_for('index'))
         except Exception as e:
-            flash(f"Database Error: {str(e)}")
-            return render_template('login.html')
+            return f"<h1>Database Error</h1><p>{str(e)}</p><p>Check if your Postgres server is running and the 'inventory' database exists.</p>"
         flash('Invalid username or password')
     return render_template('login.html')
 
@@ -94,18 +95,10 @@ def logout():
 def index():
     try:
         today = datetime.utcnow().date()
-        overdue = InventoryScan.query.filter(
-            InventoryScan.status == 'Loan', 
-            InventoryScan.return_date < today,
-            InventoryScan.is_flagged == False
-        ).all()
-        for item in overdue:
-            item.is_flagged = True
-        db.session.commit()
         recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(30).all()
         return render_template('index.html', scans=recent_scans, role=current_user.role)
     except Exception as e:
-        return f"Database Failed: {e}", 500
+        return f"<h1>Dashboard Error</h1><p>{str(e)}</p>", 500
 
 @app.route('/scanned', methods=['POST'])
 @login_required
@@ -117,7 +110,7 @@ def scanned():
         ret_date = datetime.strptime(data.get("return_date"), '%Y-%m-%d').date() if data.get("return_date") else None
 
         new_scan = InventoryScan(
-            code=data.get("code"), status=data.get("status"), notes=data.get("notes"),
+            code=data.get("code"), status=data.get("status"),
             device_type=data.get("device_type"), department=data.get("department"),
             assigned_user=data.get("assigned_user"), user_email=data.get("user_email"),
             return_date=ret_date, is_flagged=flag_it,
@@ -141,7 +134,6 @@ def delete_scans():
     return jsonify({"status": "success"})
 
 if __name__ == '__main__':
-    setup_database()
-    # CRITICAL: Use the PORT environment variable if available
+    # Use environment port (required for cloud) or 8506
     port = int(os.environ.get('PORT', 8506))
     app.run(host='0.0.0.0', port=port)
