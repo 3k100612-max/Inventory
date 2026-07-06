@@ -3,6 +3,8 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
 from datetime import datetime
 import os
+import smtplib
+from email.mime.text import MIMEText
 
 app = Flask(__name__)
 
@@ -14,6 +16,13 @@ DB_NAME = os.environ.get('DB_NAME', 'inventory')
 
 app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# SMTP Email Configuration (Fill these to enable real emails)
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = 'your-email@gmail.com'
+app.config['MAIL_PASSWORD'] = 'your-app-password'
 
 db = SQLAlchemy(app)
 
@@ -38,24 +47,41 @@ with app.app_context():
 
 @app.route('/')
 def index():
+    # Update Overdue Loans on every page refresh
+    today = datetime.utcnow().date()
+    overdue_loans = InventoryScan.query.filter(
+        InventoryScan.status == 'Loan',
+        InventoryScan.is_flagged == False,
+        InventoryScan.return_date < today
+    ).all()
+
+    for loan in overdue_loans:
+        loan.is_flagged = True
+    
+    db.session.commit()
+
     recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(30).all()
-    return render_template('index.html', scans=recent_scans)
+    return render_template('index.html', scans=recent_scans, today=today)
 
 @app.route('/scanned', methods=['POST'])
 def scanned():
     data = request.json
+    code = data.get("code")
+    status = data.get("status")
+    
     try:
-        # Repair Flagging Logic
-        repair_count = InventoryScan.query.filter_by(code=data.get("code"), status='Repair').count()
-        flag_it = (data.get("status") == 'Repair' and repair_count >= 2)
-        warning_msg = f"ALERT: Item {data.get('code')} flagged! {repair_count+1}th repair scan." if flag_it else None
+        # 1. Repair Logic: Check if this is the 3rd repair scan
+        repair_count = InventoryScan.query.filter_by(code=code, status='Repair').count()
+        flag_it = (status == 'Repair' and repair_count >= 2)
+        warning_msg = f"CRITICAL: Item {code} has reached {repair_count+1} repairs. Flagged for IT review." if flag_it else None
 
+        # 2. Parse Loan Date
         ret_date = None
         if data.get("return_date"):
             ret_date = datetime.strptime(data.get("return_date"), '%Y-%m-%d').date()
 
         new_scan = InventoryScan(
-            code=data.get("code"), status=data.get("status"), notes=data.get("notes"),
+            code=code, status=status, notes=data.get("notes"),
             device_type=data.get("device_type"), department=data.get("department"),
             scanner_name=data.get("scanner_name"), user_email=data.get("user_email"),
             return_date=ret_date, is_flagged=flag_it,
@@ -65,7 +91,12 @@ def scanned():
         db.session.add(new_scan)
         db.session.commit()
         
-        return jsonify({"status": "success", "is_flagged": flag_it, "warning": warning_msg, "id": new_scan.id})
+        return jsonify({
+            "status": "success", 
+            "is_flagged": flag_it, 
+            "warning": warning_msg, 
+            "id": new_scan.id
+        })
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
