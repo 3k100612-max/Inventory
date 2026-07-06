@@ -1,12 +1,12 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import text
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 import os
-import smtplib
-from email.mime.text import MIMEText
 
 app = Flask(__name__)
+app.secret_key = 'super-secret-inventory-key'
 
 # Database Configuration
 DB_USER = os.environ.get('DB_USER', 'postgres')
@@ -17,14 +17,17 @@ DB_NAME = os.environ.get('DB_NAME', 'inventory')
 app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# SMTP Email Configuration (Fill these to enable real emails)
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = 'your-email@gmail.com'
-app.config['MAIL_PASSWORD'] = 'your-app-password'
-
 db = SQLAlchemy(app)
+login_manager = LoginManager(app)
+login_manager.login_view = 'login'
+
+# --- MODELS ---
+
+class Admin(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(50), unique=True, nullable=False)
+    password_hash = db.Column(db.String(200), nullable=False)
+    role = db.Column(db.String(20), default='admin') # 'super_admin' or 'admin'
 
 class InventoryScan(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -32,85 +35,95 @@ class InventoryScan(db.Model):
     status = db.Column(db.String(50), nullable=False)
     device_type = db.Column(db.String(50))
     department = db.Column(db.String(100), nullable=False)
+    assigned_user = db.Column(db.String(100), nullable=False) # Renamed from Operator
     notes = db.Column(db.Text)
     photo = db.Column(db.Text)
     is_flagged = db.Column(db.Boolean, default=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    scanner_name = db.Column(db.String(100), nullable=False)
     user_email = db.Column(db.String(120))
     return_date = db.Column(db.Date)
     imei = db.Column(db.String(50))
     mac_address = db.Column(db.String(50))
 
+@login_manager.user_loader
+def load_user(user_id):
+    return Admin.query.get(int(user_id))
+
 with app.app_context():
     db.create_all()
+    # Create default Super Admin if none exists
+    if not Admin.query.filter_by(username='admin').first():
+        hashed_pw = generate_password_hash('admin123')
+        default_admin = Admin(username='admin', password_hash=hashed_pw, role='super_admin')
+        db.add(default_admin)
+        db.commit()
+
+# --- ROUTES ---
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        user = Admin.query.filter_by(username=request.form['username']).first()
+        if user and check_password_hash(user.password_hash, request.form['password']):
+            login_user(user)
+            return redirect(url_for('index'))
+        flash('Invalid username or password')
+    return render_template('login.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
 
 @app.route('/')
+@login_required
 def index():
-    # Update Overdue Loans on every page refresh
     today = datetime.utcnow().date()
-    overdue_loans = InventoryScan.query.filter(
-        InventoryScan.status == 'Loan',
-        InventoryScan.is_flagged == False,
-        InventoryScan.return_date < today
-    ).all()
-
-    for loan in overdue_loans:
-        loan.is_flagged = True
-    
+    # Auto-flag overdue loans
+    overdue = InventoryScan.query.filter(InventoryScan.status == 'Loan', InventoryScan.return_date < today).all()
+    for item in overdue:
+        item.is_flagged = True
     db.session.commit()
 
     recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(30).all()
-    return render_template('index.html', scans=recent_scans, today=today)
+    return render_template('index.html', scans=recent_scans, role=current_user.role)
 
 @app.route('/scanned', methods=['POST'])
+@login_required
 def scanned():
     data = request.json
-    code = data.get("code")
-    status = data.get("status")
-    
     try:
-        # 1. Repair Logic: Check if this is the 3rd repair scan
-        repair_count = InventoryScan.query.filter_by(code=code, status='Repair').count()
-        flag_it = (status == 'Repair' and repair_count >= 2)
-        warning_msg = f"CRITICAL: Item {code} has reached {repair_count+1} repairs. Flagged for IT review." if flag_it else None
-
-        # 2. Parse Loan Date
+        repair_count = InventoryScan.query.filter_by(code=data.get("code"), status='Repair').count()
+        flag_it = (data.get("status") == 'Repair' and repair_count >= 2)
+        
         ret_date = None
         if data.get("return_date"):
             ret_date = datetime.strptime(data.get("return_date"), '%Y-%m-%d').date()
 
         new_scan = InventoryScan(
-            code=code, status=status, notes=data.get("notes"),
+            code=data.get("code"), status=data.get("status"), notes=data.get("notes"),
             device_type=data.get("device_type"), department=data.get("department"),
-            scanner_name=data.get("scanner_name"), user_email=data.get("user_email"),
+            assigned_user=data.get("assigned_user"), user_email=data.get("user_email"),
             return_date=ret_date, is_flagged=flag_it,
-            imei=data.get("imei"), mac_address=data.get("mac_address"),
-            photo=data.get("photo")
+            imei=data.get("imei"), mac_address=data.get("mac_address"), photo=data.get("photo")
         )
-        db.session.add(new_scan)
-        db.session.commit()
-        
-        return jsonify({
-            "status": "success", 
-            "is_flagged": flag_it, 
-            "warning": warning_msg, 
-            "id": new_scan.id
-        })
+        db.add(new_scan)
+        db.commit()
+        return jsonify({"status": "success", "is_flagged": flag_it, "id": new_scan.id})
     except Exception as e:
-        db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/delete-scans', methods=['POST'])
+@login_required
 def delete_scans():
+    if current_user.role != 'super_admin':
+        return jsonify({"status": "error", "message": "Unauthorized"}), 403
+    
     ids = request.json.get('ids', [])
-    try:
-        InventoryScan.query.filter(InventoryScan.id.in_(ids)).delete(synchronize_session=False)
-        db.session.commit()
-        return jsonify({"status": "success"})
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"status": "error", "message": str(e)}), 500
+    InventoryScan.query.filter(InventoryScan.id.in_(ids)).delete(synchronize_session=False)
+    db.commit()
+    return jsonify({"status": "success"})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8506)
