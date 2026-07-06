@@ -51,7 +51,7 @@
             
             <div class="row mt-3 g-2">
                 <div class="col-md-4">
-                    <label class="small fw-bold text-primary">SERIAL NUMBER (REQUIRED)</label>
+                    <label class="small fw-bold text-primary">SERIAL NUMBER (REQ)</label>
                     <input type="text" id="scan_serial" class="form-control active-scan-field" placeholder="Scan Serial..." onclick="setActiveField('scan_serial')">
                 </div>
                 <div class="col-md-4">
@@ -59,13 +59,12 @@
                     <input type="text" id="scan_imei" class="form-control" placeholder="Scan or Skip..." onclick="setActiveField('scan_imei')">
                 </div>
                 <div class="col-md-4">
-                    <label class="small fw-bold">MAC ADDRESS (OPTIONAL)</label>
+                    <label class="small fw-bold">MAC (OPTIONAL)</label>
                     <input type="text" id="scan_mac" class="form-control" placeholder="Scan or Skip..." onclick="setActiveField('scan_mac')">
                 </div>
             </div>
             <div class="mt-3 text-center">
                 <button id="btn_save_multi" class="btn btn-success btn-lg w-100 fw-bold shadow-sm" onclick="saveData()" disabled>SAVE RECORD</button>
-                <p class="small text-muted mt-2">Serial is required. IMEI and MAC can be left blank.</p>
             </div>
         </div>
     </div>
@@ -94,7 +93,7 @@
                     <tr>
                         <th style="width: 40px;"><input type="checkbox" id="select_all" onclick="toggleAll(this)"></th>
                         <th>Time</th>
-                        <th>Identifiers (S/N, IMEI, MAC)</th>
+                        <th>Identifiers</th>
                         <th>Dept</th>
                         <th>Status</th>
                         <th>User</th>
@@ -110,7 +109,6 @@
                             <div class="small text-muted">
                                 {% if scan.imei %}IMEI: {{ scan.imei }}{% endif %}
                                 {% if scan.mac_address %} | MAC: {{ scan.mac_address }}{% endif %}
-                                {% if not scan.imei and not scan.mac_address %}-{% endif %}
                             </div>
                         </td>
                         <td class="small">{{ scan.department or '-' }}</td>
@@ -153,9 +151,9 @@
                     <label class="form-label fw-bold">Scan Mode</label>
                     <div class="btn-group w-100">
                         <input type="radio" class="btn-check" name="mode" id="mode1" value="single" checked>
-                        <label class="btn btn-outline-primary" for="mode1">Single Item</label>
+                        <label class="btn btn-outline-primary" for="mode1">Single</label>
                         <input type="radio" class="btn-check" name="mode" id="mode2" value="multiple">
-                        <label class="btn btn-outline-primary" for="mode2">Bulk Scan</label>
+                        <label class="btn btn-outline-primary" for="mode2">Bulk</label>
                     </div>
                 </div>
                 <div class="mb-3">
@@ -218,12 +216,7 @@ function updateToolbar() {
 function deleteSelected() {
     const selected = Array.from(document.querySelectorAll('.row-check:checked')).map(cb => parseInt(cb.value));
     if (!selected.length || !confirm(`Delete ${selected.length} records?`)) return;
-
-    fetch('/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: selected })
-    }).then(() => location.reload());
+    fetch('/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: selected }) }).then(() => location.reload());
 }
 
 function confirmSetup() {
@@ -256,7 +249,6 @@ function startUI() {
     scanner.start({ facingMode: "environment" }, { fps: 15, qrbox: 250 }, (text) => {
         if (navigator.vibrate) navigator.vibrate(100);
         document.getElementById(activeFieldId).value = text;
-        
         if (activeFieldId === 'scan_serial') {
             setActiveField('scan_imei');
             document.getElementById('btn_save_multi').disabled = false;
@@ -280,9 +272,7 @@ function saveData() {
             device_type: session.device, status: session.status, 
             email: session.email, return_date: session.date, notes: session.notes
         })
-    })
-    .then(r => r.json())
-    .then(data => {
+    }).then(() => {
         if(session.mode === 'single') finishSession();
         else {
             document.getElementById('scan_serial').value = '';
@@ -299,8 +289,6 @@ function finishSession() {
     if(scanner) scanner.stop().finally(() => location.reload());
     else location.reload();
 }
-
-document.getElementById('scan_serial').addEventListener('keypress', (e) => { if(e.key === 'Enter') setActiveField('scan_imei'); });
 </script>
 </body>
 </html>
