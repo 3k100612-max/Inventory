@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import text
+from sqlalchemy import text, cast, Date  # Added cast and Date here
 from datetime import datetime
 import os
 import logging
@@ -17,7 +17,7 @@ DB_PASS = os.environ.get('DB_PASS', 'P12345')
 DB_HOST = os.environ.get('DB_HOST', 'inventory-inventory-sqaoox')
 DB_NAME = os.environ.get('DB_NAME', 'inventory')
 
-# Connection string with SSL requirement for cloud databases
+# Connection string with SSL requirement
 app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}?sslmode=require'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['PROPAGATE_EXCEPTIONS'] = True
@@ -40,46 +40,27 @@ class InventoryScan(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
 def init_db():
-    """Initializes the database and handles schema migrations."""
+    """Initializes the database and attempts to fix the column type."""
     with app.app_context():
         try:
-            # Check connection
             db.session.execute(text('SELECT 1'))
             db.create_all()
             
-            # 1. FIX: Specifically convert return_date to DATE type if it is currently VARCHAR
+            # Attempt to convert return_date to DATE type
+            # We use NULLIF to handle empty strings safely
             try:
                 db.session.execute(text("""
                     ALTER TABLE inventory_scan 
                     ALTER COLUMN return_date TYPE DATE 
-                    USING return_date::date
+                    USING (NULLIF(return_date, '')::date)
                 """))
                 db.session.commit()
-                logger.info("Successfully migrated return_date to DATE type.")
+                logger.info("Database migration: return_date converted to DATE.")
             except Exception as e:
                 db.session.rollback()
-                logger.info(f"Migration check: return_date column already correct or table empty. ({e})")
+                logger.info(f"Migration skipped (likely already fixed or contains invalid data): {e}")
 
-            # 2. Ensure other columns exist (Safety net)
-            cols = {
-                "imei": "VARCHAR(100)",
-                "mac_address": "VARCHAR(100)",
-                "device_type": "VARCHAR(50)",
-                "department": "VARCHAR(50)",
-                "person_name": "VARCHAR(100)",
-                "email": "VARCHAR(120)",
-                "is_flagged": "BOOLEAN DEFAULT FALSE",
-                "timestamp": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-            }
-            
-            for col, dtype in cols.items():
-                try:
-                    db.session.execute(text(f"ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS {col} {dtype}"))
-                    db.session.commit()
-                except Exception:
-                    db.session.rollback()
-            
-            logger.info("Database connection and schema check complete.")
+            logger.info("Database schema check complete.")
         except Exception as e:
             logger.error(f"DB Init Error: {e}")
 
@@ -92,18 +73,24 @@ def index():
     try:
         # Maintenance: Flag overdue items
         today = datetime.now().date()
-        InventoryScan.query.filter(
-            InventoryScan.status == 'Loaned',
-            InventoryScan.return_date < today,
-            InventoryScan.is_flagged == False
-        ).update({InventoryScan.is_flagged: True}, synchronize_session=False)
-        db.session.commit()
+        
+        # FIXED: Using cast() to ensure PostgreSQL compares Date to Date
+        # Also wrapped in a sub-try to prevent the whole page from crashing if one row is bad
+        try:
+            InventoryScan.query.filter(
+                InventoryScan.status == 'Loaned',
+                cast(InventoryScan.return_date, Date) < today,
+                InventoryScan.is_flagged == False
+            ).update({InventoryScan.is_flagged: True}, synchronize_session=False)
+            db.session.commit()
+        except Exception as maintenance_err:
+            db.session.rollback()
+            logger.warning(f"Overdue check skipped due to data type mismatch: {maintenance_err}")
         
         recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(100).all()
         return render_template('index.html', scans=recent_scans)
     except Exception as e:
         logger.error(f"Index Error: {e}")
-        # Return specific error to browser for easier debugging
         return f"Database Error: {str(e)}", 500
 
 @app.route('/scanned', methods=['POST'])
