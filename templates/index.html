@@ -104,12 +104,12 @@
                     <tr class="{% if scan.is_flagged %}overdue-row{% endif %}">
                         <td><input type="checkbox" class="row-check" value="{{ scan.id }}" onclick="updateToolbar()"></td>
                         <td class="small text-muted">{{ scan.timestamp.strftime('%H:%M') }}</td>
-                        <td>
-                            <div class="fw-bold">{{ scan.code }}{% if scan.is_flagged %} 🚩{% endif %}</div>
-                            <div class="small text-muted">
-                                {% if scan.imei %}IMEI: {{ scan.imei }}{% endif %}
-                                {% if scan.mac_address %} | MAC: {{ scan.mac_address }}{% endif %}
-                            </div>
+                        <td class="small text-muted">
+                            {% if scan.timestamp and scan.timestamp.strftime %}
+                                {{ scan.timestamp.strftime('%H:%M') }}
+                            {% else %}
+                                {{ scan.timestamp or '--:--' }}
+                            {% endif %}
                         </td>
                         <td class="small">{{ scan.department or '-' }}</td>
                         <td><span class="badge rounded-pill bg-secondary status-badge">{{ scan.status }}</span></td>
