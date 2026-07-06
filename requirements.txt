@@ -1,3 +1,5 @@
-flask
-flask-sqlalchemy
+Flask
+Flask-SQLAlchemy
+Flask-Login
 psycopg2-binary
+Werkzeug
