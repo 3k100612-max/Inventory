@@ -56,7 +56,6 @@
         <div class="card p-5 border-0 shadow-sm">
             <h3 class="mb-3">Ready to Start?</h3>
             <p class="text-muted mb-4">Log inventory with automated repair tracking and loan monitoring.</p>
-            <!-- FIXED: Added data-bs attributes for reliable modal opening -->
             <button class="btn btn-primary btn-lg px-5 shadow" data-bs-toggle="modal" data-bs-target="#setupModal">
                 + Start New Session
             </button>
@@ -103,8 +102,8 @@
             </div>
             <div class="modal-body p-4">
                 <div class="mb-3">
-                    <label class="form-label fw-bold">Operator Name</label>
-                    <input type="text" id="m_user" class="form-control" placeholder="Who is scanning?">
+                    <label class="form-label fw-bold">User Name</label>
+                    <input type="text" id="m_user" class="form-control" placeholder="Enter user name">
                 </div>
 
                 <div class="mb-3">
@@ -174,7 +173,6 @@ function confirmSetup() {
     session.date = document.getElementById('m_date').value;
     session.notes = document.getElementById('m_notes').value;
 
-    // Close modal reliably
     const modalEl = document.getElementById('setupModal');
     const modalInstance = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
     modalInstance.hide();
