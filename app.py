@@ -4,15 +4,21 @@ from sqlalchemy import text
 from datetime import datetime
 import os
 import sys
+import logging
+
+# Setup logging to help you see errors in your deployment logs
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Database Configuration - Ensure these match your environment
+# Database Configuration
 DB_USER = os.environ.get('DB_USER', 'postgres')
 DB_PASS = os.environ.get('DB_PASS', 'P12345')
 DB_HOST = os.environ.get('DB_HOST', 'inventory-inventory-sqaoox')
 DB_NAME = os.environ.get('DB_NAME', 'inventory')
 
+# Use 'postgresql://' (required by many modern providers) and add SSL for cloud DBs
 app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['PROPAGATE_EXCEPTIONS'] = True
@@ -21,12 +27,11 @@ db = SQLAlchemy(app)
 
 class InventoryScan(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    code = db.Column(db.String(100), nullable=False) # Serial Number
+    code = db.Column(db.String(100), nullable=False)
     imei = db.Column(db.String(100), nullable=True)
     mac_address = db.Column(db.String(100), nullable=True)
     device_type = db.Column(db.String(50))
     department = db.Column(db.String(50))
-    peripheral_detail = db.Column(db.String(100))
     status = db.Column(db.String(50), nullable=False)
     person_name = db.Column(db.String(100), nullable=True)
     email = db.Column(db.String(120), nullable=True)
@@ -35,9 +40,45 @@ class InventoryScan(db.Model):
     is_flagged = db.Column(db.Boolean, default=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
-def run_global_maintenance():
-    """Scans for overdue items safely."""
+def init_db():
+    """Initializes the database safely."""
+    with app.app_context():
+        try:
+            # Check connection first
+            db.session.execute(text('SELECT 1'))
+            db.create_all()
+            
+            # Safe migration logic with correct data types
+            cols = {
+                "imei": "VARCHAR(100)",
+                "mac_address": "VARCHAR(100)",
+                "device_type": "VARCHAR(50)",
+                "department": "VARCHAR(50)",
+                "person_name": "VARCHAR(100)",
+                "email": "VARCHAR(120)",
+                "return_date": "DATE",
+                "is_flagged": "BOOLEAN DEFAULT FALSE",
+                "timestamp": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+            }
+            
+            for col, dtype in cols.items():
+                try:
+                    db.session.execute(text(f"ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS {col} {dtype}"))
+                    db.session.commit()
+                except Exception as e:
+                    db.session.rollback()
+            logger.info("Database connection and schema check complete.")
+        except Exception as e:
+            logger.error(f"DB Init Error (App will attempt to continue): {e}")
+
+@app.route('/health')
+def health():
+    return "OK", 200
+
+@app.route('/')
+def index():
     try:
+        # Maintenance: Flag overdue items
         today = datetime.now().date()
         InventoryScan.query.filter(
             InventoryScan.status == 'Loaned',
@@ -45,49 +86,31 @@ def run_global_maintenance():
             InventoryScan.is_flagged == False
         ).update({InventoryScan.is_flagged: True}, synchronize_session=False)
         db.session.commit()
+        
+        recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(100).all()
+        return render_template('index.html', scans=recent_scans)
     except Exception as e:
-        db.session.rollback()
-        print(f"Maintenance Error: {e}", file=sys.stderr)
-
-def init_db():
-    """Initializes the database without crashing the app on error."""
-    with app.app_context():
-        try:
-            db.create_all()
-            # List of all columns that should exist
-            cols = ["imei", "mac_address", "device_type", "department", "person_name", "email", "return_date", "is_flagged", "timestamp"]
-            for col in cols:
-                try:
-                    # Use individual try-except so one column failure doesn't stop the rest
-                    db.session.execute(text(f"ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS {col} VARCHAR"))
-                    db.session.commit()
-                except Exception as col_err:
-                    db.session.rollback()
-                    print(f"Notice: Column {col} check/add result: {col_err}", file=sys.stderr)
-            print("Database initialization completed.")
-        except Exception as e:
-            print(f"Critical DB Init Error: {e}", file=sys.stderr)
-
-@app.route('/')
-def index():
-    run_global_maintenance()
-    recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(100).all()
-    return render_template('index.html', scans=recent_scans)
+        logger.error(f"Index Error: {e}")
+        return "Database Error. Please check logs.", 500
 
 @app.route('/scanned', methods=['POST'])
 def scanned():
     data = request.json
     code = data.get("code")
     status = data.get("status")
-    r_date_str = data.get("return_date")
     
+    if not code:
+        return jsonify({"status": "error", "message": "Serial number is required"}), 400
+    
+    r_date_str = data.get("return_date")
     r_date = None
     if r_date_str and r_date_str.strip():
         try:
             r_date = datetime.strptime(r_date_str, '%Y-%m-%d').date()
-        except: r_date = None
+        except: pass
     
     try:
+        # Flagging logic
         repair_count = InventoryScan.query.filter_by(code=code, status='Repair').count()
         flag_it = False
         if status == 'Repair' and repair_count >= 2:
@@ -119,8 +142,6 @@ def scanned():
 def delete_scans():
     data = request.json
     ids = data.get('ids', [])
-    if not ids:
-        return jsonify({"status": "error", "message": "No items selected"}), 400
     try:
         InventoryScan.query.filter(InventoryScan.id.in_(ids)).delete(synchronize_session=False)
         db.session.commit()
@@ -131,6 +152,6 @@ def delete_scans():
 
 if __name__ == '__main__':
     init_db()
-    # Using environment PORT for better compatibility with cloud hosts
-    port = int(os.environ.get("PORT", 8506))
+    # Use 0.0.0.0 and dynamic PORT for cloud compatibility
+    port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
