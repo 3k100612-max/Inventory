@@ -189,6 +189,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Replace your script section at the bottom of index.html with this -->
 <script>
 let scanner;
 let activeFieldId = 'scan_serial';
@@ -216,7 +217,11 @@ function updateToolbar() {
 function deleteSelected() {
     const selected = Array.from(document.querySelectorAll('.row-check:checked')).map(cb => parseInt(cb.value));
     if (!selected.length || !confirm(`Delete ${selected.length} records?`)) return;
-    fetch('/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: selected }) }).then(() => location.reload());
+    fetch('/delete', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ ids: selected }) 
+    }).then(() => location.reload());
 }
 
 function confirmSetup() {
@@ -230,7 +235,8 @@ function confirmSetup() {
     session.date = document.getElementById('m_date').value;
     session.notes = document.getElementById('m_notes').value;
 
-    bootstrap.Modal.getInstance(document.getElementById('setupModal')).hide();
+    const modalEl = document.getElementById('setupModal');
+    bootstrap.Modal.getInstance(modalEl).hide();
     startUI();
 }
 
@@ -255,40 +261,70 @@ function startUI() {
         } else if (activeFieldId === 'scan_imei') {
             setActiveField('scan_mac');
         }
-    });
+    }).catch(err => console.error("Scanner error:", err));
 }
 
 function saveData() {
-    const serial = document.getElementById('scan_serial').value;
-    const imei = document.getElementById('scan_imei').value;
-    const mac = document.getElementById('scan_mac').value;
+    const btn = document.getElementById('btn_save_multi');
+    const originalText = btn.innerText;
+    btn.disabled = true;
+    btn.innerText = "SAVING...";
+
+    const payload = {
+        code: document.getElementById('scan_serial').value,
+        imei: document.getElementById('scan_imei').value,
+        mac_address: document.getElementById('scan_mac').value,
+        person_name: session.user, 
+        department: session.dept,
+        device_type: session.device, 
+        status: session.status, 
+        email: session.email, 
+        return_date: session.date, 
+        notes: session.notes
+    };
 
     fetch('/scanned', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            code: serial, imei: imei, mac_address: mac,
-            person_name: session.user, department: session.dept,
-            device_type: session.device, status: session.status, 
-            email: session.email, return_date: session.date, notes: session.notes
-        })
-    }).then(() => {
-        if(session.mode === 'single') finishSession();
-        else {
-            document.getElementById('scan_serial').value = '';
-            document.getElementById('scan_imei').value = '';
-            document.getElementById('scan_mac').value = '';
-            setActiveField('scan_serial');
-            document.getElementById('btn_save_multi').disabled = true;
-            location.reload(); 
+        body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.status === 'success') {
+            if(session.mode === 'single') {
+                finishSession();
+            } else {
+                // Clear fields for next scan in Bulk mode
+                document.getElementById('scan_serial').value = '';
+                document.getElementById('scan_imei').value = '';
+                document.getElementById('scan_mac').value = '';
+                setActiveField('scan_serial');
+                btn.disabled = true;
+                btn.innerText = originalText;
+                // Optional: refresh page to see the new row in log
+                location.reload(); 
+            }
+        } else {
+            alert("Error: " + data.message);
+            btn.disabled = false;
+            btn.innerText = originalText;
         }
+    })
+    .catch(err => {
+        alert("Server error. Check your connection.");
+        btn.disabled = false;
+        btn.innerText = originalText;
     });
 }
 
 function finishSession() {
-    if(scanner) scanner.stop().finally(() => location.reload());
-    else location.reload();
+    if(scanner) {
+        scanner.stop().then(() => location.reload()).catch(() => location.reload());
+    } else {
+        location.reload();
+    }
 }
 </script>
+
 </body>
 </html>
