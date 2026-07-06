@@ -103,7 +103,7 @@
                     {% for scan in scans %}
                     <tr class="{% if scan.is_flagged %}overdue-row{% endif %}">
                         <td><input type="checkbox" class="row-check" value="{{ scan.id }}" onclick="updateToolbar()"></td>
-                        <td class="small text-muted">{{ scan.timestamp.strftime('%H:%M') }}</td>
+                        <td class="small text-muted">{{ scan.timestamp.strftime('%H:%M') if scan.timestamp else '--:--' }}</td>
                         <td>
                             <div class="fw-bold">{{ scan.code }}{% if scan.is_flagged %} 🚩{% endif %}</div>
                             <div class="small text-muted">
@@ -189,11 +189,18 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- Replace your script section at the bottom of index.html with this -->
 <script>
 let scanner;
 let activeFieldId = 'scan_serial';
-let session = { user: '', dept: '', mode: '', device: '', status: '', email: '', date: '', notes: '' };
+
+// Load session from localStorage on startup
+let session = JSON.parse(localStorage.getItem('inventory_session')) || null;
+
+window.onload = () => {
+    if (session) {
+        startUI();
+    }
+};
 
 function toggleDeptOther() { document.getElementById('m_dept_other').style.display = (document.getElementById('m_dept').value === 'Others') ? 'block' : 'none'; }
 function checkLoan() { document.getElementById('loan_section').style.display = (document.querySelector('input[name="status"]:checked').value === 'Loaned') ? 'block' : 'none'; }
@@ -225,18 +232,24 @@ function deleteSelected() {
 }
 
 function confirmSetup() {
-    session.user = document.getElementById('m_user').value || 'User';
     const deptSelect = document.getElementById('m_dept').value;
-    session.dept = (deptSelect === 'Others') ? document.getElementById('m_dept_other').value : deptSelect;
-    session.mode = document.querySelector('input[name="mode"]:checked').value;
-    session.device = document.getElementById('m_device').value;
-    session.status = document.querySelector('input[name="status"]:checked').value;
-    session.email = document.getElementById('m_email').value;
-    session.date = document.getElementById('m_date').value;
-    session.notes = document.getElementById('m_notes').value;
+    session = {
+        user: document.getElementById('m_user').value || 'User',
+        dept: (deptSelect === 'Others') ? document.getElementById('m_dept_other').value : deptSelect,
+        mode: document.querySelector('input[name="mode"]:checked').value,
+        device: document.getElementById('m_device').value,
+        status: document.querySelector('input[name="status"]:checked').value,
+        email: document.getElementById('m_email').value,
+        date: document.getElementById('m_date').value,
+        notes: document.getElementById('m_notes').value
+    };
 
+    localStorage.setItem('inventory_session', JSON.stringify(session));
+    
     const modalEl = document.getElementById('setupModal');
-    bootstrap.Modal.getInstance(modalEl).hide();
+    const modalInstance = bootstrap.Modal.getInstance(modalEl);
+    if(modalInstance) modalInstance.hide();
+    
     startUI();
 }
 
@@ -251,17 +264,19 @@ function startUI() {
     document.getElementById('ui_dept').innerText = session.dept;
     document.getElementById('ui_device').innerText = session.device;
 
-    scanner = new Html5Qrcode("reader");
-    scanner.start({ facingMode: "environment" }, { fps: 15, qrbox: 250 }, (text) => {
-        if (navigator.vibrate) navigator.vibrate(100);
-        document.getElementById(activeFieldId).value = text;
-        if (activeFieldId === 'scan_serial') {
-            setActiveField('scan_imei');
-            document.getElementById('btn_save_multi').disabled = false;
-        } else if (activeFieldId === 'scan_imei') {
-            setActiveField('scan_mac');
-        }
-    }).catch(err => console.error("Scanner error:", err));
+    if (!scanner) {
+        scanner = new Html5Qrcode("reader");
+        scanner.start({ facingMode: "environment" }, { fps: 15, qrbox: 250 }, (text) => {
+            if (navigator.vibrate) navigator.vibrate(100);
+            document.getElementById(activeFieldId).value = text;
+            if (activeFieldId === 'scan_serial') {
+                setActiveField('scan_imei');
+                document.getElementById('btn_save_multi').disabled = false;
+            } else if (activeFieldId === 'scan_imei') {
+                setActiveField('scan_mac');
+            }
+        }).catch(err => console.error("Scanner error:", err));
+    }
 }
 
 function saveData() {
@@ -294,14 +309,8 @@ function saveData() {
             if(session.mode === 'single') {
                 finishSession();
             } else {
-                // Clear fields for next scan in Bulk mode
-                document.getElementById('scan_serial').value = '';
-                document.getElementById('scan_imei').value = '';
-                document.getElementById('scan_mac').value = '';
-                setActiveField('scan_serial');
-                btn.disabled = true;
-                btn.innerText = originalText;
-                // Optional: refresh page to see the new row in log
+                // In bulk mode, we reload to show the new record in the table
+                // but our localStorage keeps the session active!
                 location.reload(); 
             }
         } else {
@@ -318,6 +327,7 @@ function saveData() {
 }
 
 function finishSession() {
+    localStorage.removeItem('inventory_session');
     if(scanner) {
         scanner.stop().then(() => location.reload()).catch(() => location.reload());
     } else {
