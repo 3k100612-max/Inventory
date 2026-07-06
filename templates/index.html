@@ -28,9 +28,10 @@
         <div class="row align-items-center">
             <div class="col-md-8">
                 <h5 class="mb-1">User: <span id="ui_user" class="text-primary"></span></h5>
-                <div class="d-flex gap-2">
+                <div class="d-flex gap-2 flex-wrap">
                     <span id="ui_mode" class="badge bg-dark"></span>
                     <span id="ui_status" class="badge bg-primary"></span>
+                    <span id="ui_dept" class="badge bg-secondary"></span>
                     <span id="ui_device" class="badge bg-info text-dark"></span>
                 </div>
                 <div id="ui_loan_msg" class="mt-2 small text-danger fw-bold"></div>
@@ -71,6 +72,7 @@
                     <tr>
                         <th>Time</th>
                         <th>Item Code</th>
+                        <th>Dept</th>
                         <th>Status</th>
                         <th>User</th>
                         <th>Notes</th>
@@ -81,6 +83,7 @@
                     <tr class="{% if scan.is_flagged %}overdue-row{% endif %}">
                         <td class="small text-muted">{{ scan.timestamp.strftime('%H:%M:%S') }}</td>
                         <td class="fw-bold">{{ scan.code }}{% if scan.is_flagged %} 🚩{% endif %}</td>
+                        <td class="small">{{ scan.department or '-' }}</td>
                         <td><span class="badge rounded-pill bg-secondary status-badge">{{ scan.status }}</span></td>
                         <td>{{ scan.person_name }}<br><small class="text-muted">{{ scan.email or '' }}</small></td>
                         <td class="small text-muted">{{ scan.notes or '' }}</td>
@@ -104,6 +107,19 @@
                 <div class="mb-3">
                     <label class="form-label fw-bold">User Name</label>
                     <input type="text" id="m_user" class="form-control" placeholder="Enter user name">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Department</label>
+                    <select id="m_dept" class="form-select" onchange="toggleDeptOther()">
+                        <option value="IT">IT</option>
+                        <option value="ADMIN">ADMIN</option>
+                        <option value="FINANCE">FINANCE</option>
+                        <option value="PROCUREMENT">PROCUREMENT</option>
+                        <option value="FACILITIES">FACILITIES</option>
+                        <option value="Others">Others</option>
+                    </select>
+                    <input type="text" id="m_dept_other" class="form-control mt-2" placeholder="Enter department name..." style="display:none;">
                 </div>
 
                 <div class="mb-3">
@@ -159,13 +175,19 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 let scanner;
-let session = { user: '', mode: '', device: '', status: '', email: '', date: '', notes: '' };
+let session = { user: '', dept: '', mode: '', device: '', status: '', email: '', date: '', notes: '' };
 
 function togglePeri() { document.getElementById('m_peri').style.display = (document.getElementById('m_device').value === 'Peripherals') ? 'block' : 'none'; }
 function checkLoan() { document.getElementById('loan_section').style.display = (document.querySelector('input[name="status"]:checked').value === 'Loaned') ? 'block' : 'none'; }
+function toggleDeptOther() { document.getElementById('m_dept_other').style.display = (document.getElementById('m_dept').value === 'Others') ? 'block' : 'none'; }
 
 function confirmSetup() {
     session.user = document.getElementById('m_user').value || 'User';
+    
+    // Handle Department Selection
+    const deptSelect = document.getElementById('m_dept').value;
+    session.dept = (deptSelect === 'Others') ? document.getElementById('m_dept_other').value : deptSelect;
+
     session.mode = document.querySelector('input[name="mode"]:checked').value;
     session.device = document.getElementById('m_device').value;
     session.status = document.querySelector('input[name="status"]:checked').value;
@@ -188,6 +210,7 @@ function startUI() {
     document.getElementById('ui_user').innerText = session.user;
     document.getElementById('ui_mode').innerText = session.mode.toUpperCase();
     document.getElementById('ui_status').innerText = session.status;
+    document.getElementById('ui_dept').innerText = session.dept;
     document.getElementById('ui_device').innerText = session.device;
     if(session.status === 'Loaned') document.getElementById('ui_loan_msg').innerText = `DUE: ${session.date} | ${session.email}`;
 
@@ -203,8 +226,14 @@ function saveData(code) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            code: code, person_name: session.user, device_type: session.device,
-            status: session.status, email: session.email, return_date: session.date, notes: session.notes
+            code: code, 
+            person_name: session.user, 
+            department: session.dept,
+            device_type: session.device,
+            status: session.status, 
+            email: session.email, 
+            return_date: session.date, 
+            notes: session.notes
         })
     })
     .then(r => r.json())
@@ -213,6 +242,7 @@ function saveData(code) {
         const row = `<tr class="${data.is_flagged ? 'overdue-row' : ''}">
             <td class="small text-muted">${time}</td>
             <td class="fw-bold">${code}${data.is_flagged ? ' 🚩' : ''}</td>
+            <td class="small">${session.dept}</td>
             <td><span class="badge rounded-pill bg-secondary status-badge">${session.status}</span></td>
             <td>${session.user}</td>
             <td class="small">${session.notes}</td>
