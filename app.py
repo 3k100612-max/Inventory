@@ -58,13 +58,12 @@ def setup_database():
         try:
             # This creates all tables defined in models if they don't exist
             db.create_all()
-            
             # Check if the Admin table actually has a Super Admin
             if not Admin.query.filter_by(username='admin').first():
                 hpw = generate_password_hash('admin123')
                 super_user = Admin(username='admin', password_hash=hpw, role='super_admin')
-                db.add(super_user)
-                db.commit()
+                db.session.add(super_user)
+                db.session.commit()
                 print(">>> Default Super Admin created (admin / admin123)")
         except Exception as e:
             print(f">>> DATABASE SETUP ERROR: {e}", file=sys.stderr)
