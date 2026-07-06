@@ -23,7 +23,7 @@
 <div class="container-fluid">
     <h2 class="text-center mb-4">Inventory Control</h2>
 
-    <!-- SESSION HEADER -->
+    <!-- SESSION HEADER: MONITORING -->
     <div id="session_info" class="session-bar card shadow-sm p-3">
         <div class="d-flex justify-content-between align-items-center">
             <div>
@@ -36,26 +36,31 @@
         </div>
     </div>
 
-    <!-- SCANNER -->
+    <!-- SCANNER VIEW -->
     <div id="scanner_wrapper" style="display:none;">
         <div class="card">
-            <div id="reader-container"><div id="reader"></div><div id="flash" class="flash-success"></div></div>
-            <div class="p-3"><input type="text" id="manual_code" class="form-control" placeholder="Manual entry..."></div>
+            <div id="reader-container">
+                <div id="reader"></div>
+                <div id="flash" class="flash-success"></div>
+            </div>
+            <div class="p-3">
+                <input type="text" id="manual_code" class="form-control" placeholder="Or type code and press Enter...">
+            </div>
         </div>
     </div>
 
     <!-- START SCREEN -->
     <div id="start_screen" class="text-center py-5">
         <div class="card p-5 border-0 shadow-sm">
-            <h4>Monitoring System</h4>
-            <p class="text-muted">Set up your session to start logging items.</p>
+            <h4>Inventory Monitoring</h4>
+            <p class="text-muted">Start a session to log items with device types and loan dates.</p>
             <button class="btn btn-primary btn-lg px-5 shadow" onclick="showSetup()">+ Start New Session</button>
         </div>
     </div>
 
-    <!-- LOG TABLE -->
+    <!-- HISTORY LOG -->
     <div class="card p-3">
-        <h5 class="mb-3">Activity Log</h5>
+        <h5 class="mb-3">Recent Activity</h5>
         <div class="table-responsive">
             <table class="table table-sm table-hover align-middle">
                 <thead class="table-light">
@@ -85,23 +90,26 @@
     </div>
 </div>
 
-<!-- SETUP MODAL -->
+<!-- SETUP MODAL: STEPS 1-4 -->
 <div class="modal fade" id="setupModal" data-bs-backdrop="static" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-light"><h5 class="modal-title">Session Setup</h5></div>
             <div class="modal-body">
+                <!-- USER NAME -->
                 <label class="fw-bold small text-muted">USER NAME</label>
                 <input type="text" id="m_user_name" class="form-control mb-3" placeholder="Enter your name">
 
+                <!-- 1. MODE -->
                 <label class="fw-bold small text-muted">1. SCAN MODE</label>
                 <div class="btn-group w-100 mb-3">
                     <input type="radio" class="btn-check" name="mode" id="m1" value="single" checked>
-                    <label class="btn btn-outline-primary" for="m1">Single</label>
+                    <label class="btn btn-outline-primary" for="m1">Single Scan</label>
                     <input type="radio" class="btn-check" name="mode" id="m2" value="multiple">
-                    <label class="btn btn-outline-primary" for="m2">Multiple</label>
+                    <label class="btn btn-outline-primary" for="m2">Multiple Scan</label>
                 </div>
 
+                <!-- 2. DEVICE TYPE -->
                 <label class="fw-bold small text-muted">2. DEVICE TYPE</label>
                 <select id="device_type" class="form-select mb-2" onchange="togglePeri()">
                     <option value="Laptop">Laptop</option>
@@ -110,8 +118,9 @@
                     <option value="Docking Station">Docking Station</option>
                     <option value="Peripherals">Peripherals</option>
                 </select>
-                <input type="text" id="peri_detail" class="form-control mb-3" placeholder="Specify peripheral..." style="display:none;">
+                <input type="text" id="peri_detail" class="form-control mb-3" placeholder="Specify peripheral (e.g. Mouse)" style="display:none;">
 
+                <!-- 3. STATUS -->
                 <label class="fw-bold small text-muted">3. STATUS</label>
                 <div class="row g-2 mb-2">
                     <div class="col-4"><input type="radio" class="btn-check" name="status" id="s1" value="In Stock" onchange="checkLoan()" checked><label class="btn btn-sm btn-outline-secondary w-100" for="s1">Stock</label></div>
@@ -122,18 +131,20 @@
                     <div class="col-4"><input type="radio" class="btn-check" name="status" id="s6" value="Retired" onchange="checkLoan()"><label class="btn btn-sm btn-outline-danger w-100" for="s6">Retired</label></div>
                 </div>
 
+                <!-- LOAN DETAILS (Conditional) -->
                 <div id="loan_fields">
                     <label class="fw-bold small text-primary">LOAN DETAILS</label>
-                    <input type="email" id="m_email" class="form-control mb-2" placeholder="User Email">
-                    <label class="small text-muted">Return Date:</label>
+                    <input type="email" id="m_email" class="form-control mb-2" placeholder="User Email for alerts">
+                    <label class="small text-muted">Expected Return Date:</label>
                     <input type="date" id="m_return_date" class="form-control">
                 </div>
 
+                <!-- 4. NOTES -->
                 <label class="fw-bold small text-muted mt-3">4. NOTES (OPTIONAL)</label>
                 <textarea id="m_notes" class="form-control" rows="2"></textarea>
             </div>
             <div class="modal-footer border-0">
-                <button class="btn btn-primary w-100 py-2" onclick="confirmSetup()">Confirm & Open Camera</button>
+                <button class="btn btn-primary w-100 py-2 shadow-sm" onclick="confirmSetup()">Confirm & Open Camera</button>
             </div>
         </div>
     </div>
@@ -150,7 +161,7 @@ function togglePeri() { document.getElementById('peri_detail').style.display = (
 function checkLoan() { document.getElementById('loan_fields').style.display = (document.querySelector('input[name="status"]:checked').value === 'Loaned') ? 'block' : 'none'; }
 
 function confirmSetup() {
-    session.user = document.getElementById('m_user_name').value || 'System';
+    session.user = document.getElementById('m_user_name').value || 'Unknown';
     session.mode = document.querySelector('input[name="mode"]:checked').value;
     session.device = document.getElementById('device_type').value;
     session.peri = document.getElementById('peri_detail').value;
@@ -158,6 +169,7 @@ function confirmSetup() {
     session.email = document.getElementById('m_email').value;
     session.return_date = document.getElementById('m_return_date').value;
     session.notes = document.getElementById('m_notes').value;
+
     setupModal.hide();
     startScanningUI();
 }
@@ -166,10 +178,15 @@ function startScanningUI() {
     document.getElementById('start_screen').style.display = 'none';
     document.getElementById('session_info').style.display = 'block';
     document.getElementById('scanner_wrapper').style.display = 'block';
-    document.getElementById('ui_user').innerText = session.user;
+    
+    document.getElementById('ui_user').innerText = "User: " + session.user;
     document.getElementById('ui_mode').innerText = session.mode.toUpperCase();
     document.getElementById('ui_status').innerText = session.status;
-    if(session.status === 'Loaned') document.getElementById('ui_loan_details').innerText = `Return: ${session.return_date} | ${session.email}`;
+    
+    if(session.status === 'Loaned') {
+        document.getElementById('ui_loan_details').innerText = `Due: ${session.return_date} | ${session.email}`;
+    }
+
     html5QrCode = new Html5Qrcode("reader");
     html5QrCode.start({ facingMode: "environment" }, { fps: 15, qrbox: 250 }, onScanSuccess);
 }
@@ -187,15 +204,21 @@ function saveData(code) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            code: code, person_name: session.user, device_type: session.device,
-            peripheral_detail: session.peri, status: session.status,
-            email: session.email, return_date: session.return_date, notes: session.notes
+            code: code,
+            person_name: session.user,
+            device_type: session.device,
+            peripheral_detail: session.peri,
+            status: session.status,
+            email: session.email,
+            return_date: session.return_date,
+            notes: session.notes
         })
     })
     .then(res => res.json())
     .then(data => {
         const now = new Date();
         const timeStr = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0') + ":" + now.getSeconds().toString().padStart(2, '0');
+        
         const row = `<tr class="${data.is_flagged ? 'table-danger' : ''}">
             <td class="time-text">${timeStr}</td>
             <td class="fw-bold">${code}${data.is_flagged ? ' 🚩' : ''}</td>
@@ -204,7 +227,9 @@ function saveData(code) {
             <td><span class="badge bg-secondary">${session.status}</span></td>
             <td class="note-text">${session.notes}</td>
         </tr>`;
+        
         document.getElementById('history_body').insertAdjacentHTML('afterbegin', row);
+        
         if (session.mode === 'single') finishSession();
     });
 }
