@@ -7,17 +7,17 @@ import os
 import sys
 
 app = Flask(__name__)
-app.secret_key = 'super-secret-inventory-key'
+app.secret_key = os.environ.get('SECRET_KEY', 'super-secret-inventory-key')
 
-# Database Configuration
+# --- DATABASE CONFIGURATION ---
+# IMPORTANT: If running locally, change DB_HOST to 'localhost'
 DB_USER = os.environ.get('DB_USER', 'postgres')
 DB_PASS = os.environ.get('DB_PASS', 'P12345')
-DB_HOST = os.environ.get('DB_HOST', 'inventory-inventory-sqaoox')
+DB_HOST = os.environ.get('DB_HOST', 'inventory-inventory-sqaoox') 
 DB_NAME = os.environ.get('DB_NAME', 'inventory')
 
 app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-# Added a timeout so the app doesn't hang forever if the DB is down
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {"connect_args": {"connect_timeout": 5}}
 
 db = SQLAlchemy(app)
@@ -25,12 +25,11 @@ login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
 # --- MODELS ---
-
 class Admin(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
     password_hash = db.Column(db.String(200), nullable=False)
-    role = db.Column(db.String(20), default='admin') # 'super_admin' or 'admin'
+    role = db.Column(db.String(20), default='admin')
 
 class InventoryScan(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -56,20 +55,19 @@ def load_user(user_id):
 def setup_database():
     with app.app_context():
         try:
-            # This creates all tables defined in models if they don't exist
             db.create_all()
-            
-            # Check if the Admin table actually has a Super Admin
             if not Admin.query.filter_by(username='admin').first():
                 hpw = generate_password_hash('admin123')
-                super_user = Admin(username='admin', password_hash=hpw, role='super_admin')
-                db.add(super_user)
+                db.add(Admin(username='admin', password_hash=hpw, role='super_admin'))
                 db.commit()
-                print(">>> Default Super Admin created (admin / admin123)")
+                print(">>> Admin table created and default user added.")
         except Exception as e:
-            print(f">>> DATABASE SETUP ERROR: {e}", file=sys.stderr)
+            print(f">>> DB ERROR: {e}", file=sys.stderr)
 
 # --- ROUTES ---
+@app.route('/health')
+def health():
+    return "OK", 200
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -96,7 +94,6 @@ def logout():
 def index():
     try:
         today = datetime.utcnow().date()
-        # Auto-flag overdue loans
         overdue = InventoryScan.query.filter(
             InventoryScan.status == 'Loan', 
             InventoryScan.return_date < today,
@@ -105,47 +102,19 @@ def index():
         for item in overdue:
             item.is_flagged = True
         db.session.commit()
-
         recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(30).all()
         return render_template('index.html', scans=recent_scans, role=current_user.role)
     except Exception as e:
-        return f"Database Connection Failed: {e}", 500
-
-# New Route: Add other Admins (Super Admin only)
-@app.route('/add-admin', methods=['POST'])
-@login_required
-def add_admin():
-    if current_user.role != 'super_admin':
-        return jsonify({"status": "error", "message": "Unauthorized"}), 403
-    
-    data = request.json
-    username = data.get('username')
-    password = data.get('password')
-    
-    if Admin.query.filter_by(username=username).first():
-        return jsonify({"status": "error", "message": "User already exists"}), 400
-    
-    new_admin = Admin(
-        username=username, 
-        password_hash=generate_password_hash(password),
-        role='admin'
-    )
-    db.session.add(new_admin)
-    db.session.commit()
-    return jsonify({"status": "success"})
+        return f"Database Failed: {e}", 500
 
 @app.route('/scanned', methods=['POST'])
 @login_required
 def scanned():
     data = request.json
     try:
-        # Repair flagging (3rd scan)
         repair_count = InventoryScan.query.filter_by(code=data.get("code"), status='Repair').count()
         flag_it = (data.get("status") == 'Repair' and repair_count >= 2)
-        
-        ret_date = None
-        if data.get("return_date"):
-            ret_date = datetime.strptime(data.get("return_date"), '%Y-%m-%d').date()
+        ret_date = datetime.strptime(data.get("return_date"), '%Y-%m-%d').date() if data.get("return_date") else None
 
         new_scan = InventoryScan(
             code=data.get("code"), status=data.get("status"), notes=data.get("notes"),
@@ -166,7 +135,6 @@ def scanned():
 def delete_scans():
     if current_user.role != 'super_admin':
         return jsonify({"status": "error", "message": "Unauthorized"}), 403
-    
     ids = request.json.get('ids', [])
     InventoryScan.query.filter(InventoryScan.id.in_(ids)).delete(synchronize_session=False)
     db.session.commit()
@@ -174,4 +142,6 @@ def delete_scans():
 
 if __name__ == '__main__':
     setup_database()
-    app.run(host='0.0.0.0', port=8506)
+    # CRITICAL: Use the PORT environment variable if available
+    port = int(os.environ.get('PORT', 8506))
+    app.run(host='0.0.0.0', port=port)
