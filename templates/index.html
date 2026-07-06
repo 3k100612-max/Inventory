@@ -3,32 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inventory Management System</title>
+    <title>Inventory Monitor Pro</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { background-color: #f4f7f6; padding: 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        .card { border: none; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
-        #reader-container { position: relative; width: 100%; border-radius: 15px; overflow: hidden; background: #222; }
-        .session-info { display: none; background: #ffffff; border-left: 6px solid #007bff; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+        body { background-color: #f4f7f6; padding: 20px; font-family: 'Segoe UI', sans-serif; }
+        .card { border: none; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); margin-bottom: 20px; }
+        #reader-container { position: relative; width: 100%; border-radius: 15px; overflow: hidden; background: #222; min-height: 300px; }
+        .session-info-bar { display: none; background: #fff; border-left: 6px solid #0d6efd; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
         .overdue-row { background-color: #fff5f5 !important; border-left: 4px solid #dc3545; }
-        .flag-icon { color: #dc3545; font-weight: bold; font-size: 1.2rem; }
-        .status-badge { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        .status-badge { font-size: 0.7rem; text-transform: uppercase; font-weight: bold; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>Inventory Control Center</h2>
-        <button class="btn btn-outline-primary btn-sm" onclick="location.reload()">🔄 Refresh & Sync Flags</button>
+        <h2 class="fw-bold text-dark">Inventory Control</h2>
+        <button class="btn btn-outline-secondary btn-sm" onclick="location.reload()">🔄 Sync & Refresh</button>
     </div>
 
-    <!-- SESSION BAR -->
-    <div id="session_info" class="session-info card">
+    <!-- ACTIVE SESSION INFO -->
+    <div id="session_info" class="session-info-bar card shadow-sm">
         <div class="row align-items-center">
             <div class="col-md-8">
-                <h5 class="mb-1">Active Session: <span id="ui_user" class="text-primary"></span></h5>
+                <h5 class="mb-1">User: <span id="ui_user" class="text-primary"></span></h5>
                 <div class="d-flex gap-2">
                     <span id="ui_mode" class="badge bg-dark"></span>
                     <span id="ui_status" class="badge bg-primary"></span>
@@ -37,40 +36,44 @@
                 <div id="ui_loan_msg" class="mt-2 small text-danger fw-bold"></div>
             </div>
             <div class="col-md-4 text-end">
-                <button class="btn btn-success fw-bold px-4" onclick="finishSession()">FINISH SESSION</button>
+                <button class="btn btn-danger fw-bold px-4" onclick="finishSession()">END SESSION</button>
             </div>
         </div>
     </div>
 
-    <!-- START & SCANNER -->
+    <!-- SCANNER VIEW -->
     <div id="scanner_section" style="display:none;">
-        <div class="card mb-4 p-3">
+        <div class="card p-3">
             <div id="reader-container"><div id="reader"></div></div>
             <div class="mt-3">
-                <input type="text" id="manual_code" class="form-control form-control-lg" placeholder="Enter Serial Number Manually...">
+                <input type="text" id="manual_code" class="form-control form-control-lg" placeholder="Manual serial number entry...">
             </div>
         </div>
     </div>
 
+    <!-- START SCREEN -->
     <div id="start_section" class="text-center py-5">
-        <div class="card p-5">
-            <h3>Ready to log inventory?</h3>
-            <p class="text-muted">Configure session settings to begin high-efficiency scanning.</p>
-            <button class="btn btn-primary btn-lg shadow-sm px-5" onclick="showSetup()">Start New Session</button>
+        <div class="card p-5 border-0 shadow-sm">
+            <h3 class="mb-3">Ready to Start?</h3>
+            <p class="text-muted mb-4">Log inventory with automated repair tracking and loan monitoring.</p>
+            <!-- FIXED: Added data-bs attributes for reliable modal opening -->
+            <button class="btn btn-primary btn-lg px-5 shadow" data-bs-toggle="modal" data-bs-target="#setupModal">
+                + Start New Session
+            </button>
         </div>
     </div>
 
-    <!-- DATA TABLE -->
+    <!-- HISTORY LOG -->
     <div class="card p-4">
-        <h5 class="mb-3">Global Activity Log <small class="text-muted">(Last 50 Scans)</small></h5>
+        <h5 class="mb-3">Recent Activity Log</h5>
         <div class="table-responsive">
             <table class="table table-hover align-middle">
                 <thead class="table-light">
                     <tr>
-                        <th>Timestamp</th>
+                        <th>Time</th>
                         <th>Item Code</th>
-                        <th>User</th>
                         <th>Status</th>
+                        <th>User</th>
                         <th>Notes</th>
                     </tr>
                 </thead>
@@ -78,13 +81,10 @@
                     {% for scan in scans %}
                     <tr class="{% if scan.is_flagged %}overdue-row{% endif %}">
                         <td class="small text-muted">{{ scan.timestamp.strftime('%H:%M:%S') }}</td>
-                        <td class="fw-bold">
-                            {{ scan.code }}
-                            {% if scan.is_flagged %}<span class="flag-icon" title="Flagged for Repair/Overdue">🚩</span>{% endif %}
-                        </td>
-                        <td>{{ scan.person_name }}<br><small class="text-muted">{{ scan.email or '' }}</small></td>
+                        <td class="fw-bold">{{ scan.code }}{% if scan.is_flagged %} 🚩{% endif %}</td>
                         <td><span class="badge rounded-pill bg-secondary status-badge">{{ scan.status }}</span></td>
-                        <td class="note-text small text-truncate" style="max-width: 200px;">{{ scan.notes or '' }}</td>
+                        <td>{{ scan.person_name }}<br><small class="text-muted">{{ scan.email or '' }}</small></td>
+                        <td class="small text-muted">{{ scan.notes or '' }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -96,13 +96,14 @@
 <!-- SETUP MODAL -->
 <div class="modal fade" id="setupModal" data-bs-backdrop="static" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow">
+        <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title">Session Configuration</h5>
+                <h5 class="modal-title">Session Setup</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-4">
                 <div class="mb-3">
-                    <label class="form-label fw-bold">Scanning User</label>
+                    <label class="form-label fw-bold">Operator Name</label>
                     <input type="text" id="m_user" class="form-control" placeholder="Who is scanning?">
                 </div>
 
@@ -117,7 +118,7 @@
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label fw-bold">Device Category</label>
+                    <label class="form-label fw-bold">Device Type</label>
                     <select id="m_device" class="form-select" onchange="togglePeri()">
                         <option value="Laptop">Laptop</option>
                         <option value="Mobile">Mobile Phone</option>
@@ -125,11 +126,11 @@
                         <option value="Docking Station">Docking Station</option>
                         <option value="Peripherals">Other Peripherals</option>
                     </select>
-                    <input type="text" id="m_peri" class="form-control mt-2" placeholder="Describe peripheral..." style="display:none;">
+                    <input type="text" id="m_peri" class="form-control mt-2" placeholder="Specify peripheral..." style="display:none;">
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label fw-bold">Update Status To</label>
+                    <label class="form-label fw-bold">Update Status</label>
                     <div class="row g-2">
                         <div class="col-6"><input type="radio" class="btn-check" name="status" id="st1" value="In Stock" onchange="checkLoan()" checked><label class="btn btn-sm btn-outline-secondary w-100" for="st1">In Stock</label></div>
                         <div class="col-6"><input type="radio" class="btn-check" name="status" id="st2" value="In Use" onchange="checkLoan()"><label class="btn btn-sm btn-outline-secondary w-100" for="st2">In Use</label></div>
@@ -139,34 +140,33 @@
                 </div>
 
                 <div id="loan_section" class="bg-light p-3 rounded mb-3" style="display:none;">
-                    <label class="form-label fw-bold text-primary">Loan Details</label>
+                    <label class="form-label fw-bold text-primary small">LOAN DETAILS</label>
                     <input type="email" id="m_email" class="form-control mb-2" placeholder="Borrower's Email">
                     <input type="date" id="m_date" class="form-control">
                 </div>
 
-                <div class="mb-3">
+                <div class="mb-0">
                     <label class="form-label fw-bold">Notes</label>
-                    <textarea id="m_notes" class="form-control" rows="2"></textarea>
+                    <textarea id="m_notes" class="form-control" rows="2" placeholder="Optional notes..."></textarea>
                 </div>
             </div>
             <div class="modal-footer border-0">
-                <button class="btn btn-primary w-100 py-3 fw-bold" onclick="confirmSetup()">BEGIN SCANNING</button>
+                <button class="btn btn-primary w-100 py-3 fw-bold" onclick="confirmSetup()">CONFIRM & START</button>
             </div>
         </div>
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 let scanner;
 let session = { user: '', mode: '', device: '', status: '', email: '', date: '', notes: '' };
-const modal = new bootstrap.Modal(document.getElementById('setupModal'));
 
-function showSetup() { modal.show(); }
 function togglePeri() { document.getElementById('m_peri').style.display = (document.getElementById('m_device').value === 'Peripherals') ? 'block' : 'none'; }
 function checkLoan() { document.getElementById('loan_section').style.display = (document.querySelector('input[name="status"]:checked').value === 'Loaned') ? 'block' : 'none'; }
 
 function confirmSetup() {
-    session.user = document.getElementById('m_user').value || 'System User';
+    session.user = document.getElementById('m_user').value || 'User';
     session.mode = document.querySelector('input[name="mode"]:checked').value;
     session.device = document.getElementById('m_device').value;
     session.status = document.querySelector('input[name="status"]:checked').value;
@@ -174,7 +174,11 @@ function confirmSetup() {
     session.date = document.getElementById('m_date').value;
     session.notes = document.getElementById('m_notes').value;
 
-    modal.hide();
+    // Close modal reliably
+    const modalEl = document.getElementById('setupModal');
+    const modalInstance = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+    modalInstance.hide();
+    
     startUI();
 }
 
@@ -190,12 +194,10 @@ function startUI() {
     if(session.status === 'Loaned') document.getElementById('ui_loan_msg').innerText = `DUE: ${session.date} | ${session.email}`;
 
     scanner = new Html5Qrcode("reader");
-    scanner.start({ facingMode: "environment" }, { fps: 15, qrbox: 250 }, onScan);
-}
-
-function onScan(text) {
-    if (navigator.vibrate) navigator.vibrate(100);
-    saveData(text);
+    scanner.start({ facingMode: "environment" }, { fps: 15, qrbox: 250 }, (text) => {
+        if (navigator.vibrate) navigator.vibrate(100);
+        saveData(text);
+    });
 }
 
 function saveData(code) {
@@ -209,12 +211,12 @@ function saveData(code) {
     })
     .then(r => r.json())
     .then(data => {
-        const time = new Date().toLocaleTimeString();
+        const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
         const row = `<tr class="${data.is_flagged ? 'overdue-row' : ''}">
             <td class="small text-muted">${time}</td>
             <td class="fw-bold">${code}${data.is_flagged ? ' 🚩' : ''}</td>
-            <td>${session.user}<br><small>${session.email}</small></td>
-            <td><span class="badge rounded-pill bg-secondary">${session.status}</span></td>
+            <td><span class="badge rounded-pill bg-secondary status-badge">${session.status}</span></td>
+            <td>${session.user}</td>
             <td class="small">${session.notes}</td>
         </tr>`;
         document.getElementById('history_body').insertAdjacentHTML('afterbegin', row);
