@@ -22,6 +22,7 @@ class InventoryScan(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(100), nullable=False)
     device_type = db.Column(db.String(50))
+    department = db.Column(db.String(50)) # Added department field
     peripheral_detail = db.Column(db.String(100))
     status = db.Column(db.String(50), nullable=False)
     person_name = db.Column(db.String(100), nullable=True)
@@ -50,8 +51,8 @@ def run_global_maintenance():
 def init_db():
     with app.app_context():
         db.create_all()
-        # Ensure all columns exist for new features
-        cols = ["device_type", "person_name", "email", "return_date", "is_flagged", "timestamp"]
+        # Ensure all columns exist for new features, including department
+        cols = ["device_type", "department", "person_name", "email", "return_date", "is_flagged", "timestamp"]
         for col in cols:
             try:
                 db.session.execute(text(f"ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS {col} VARCHAR"))
@@ -90,6 +91,7 @@ def scanned():
         new_scan = InventoryScan(
             code=code,
             device_type=data.get("device_type"),
+            department=data.get("department"), # Save department
             peripheral_detail=data.get("peripheral_detail"),
             status=status,
             person_name=data.get("person_name"),
