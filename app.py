@@ -20,9 +20,11 @@ db = SQLAlchemy(app)
 
 class InventoryScan(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    code = db.Column(db.String(100), nullable=False)
+    code = db.Column(db.String(100), nullable=False) # Serial Number
+    imei = db.Column(db.String(100), nullable=True)
+    mac_address = db.Column(db.String(100), nullable=True)
     device_type = db.Column(db.String(50))
-    department = db.Column(db.String(50)) # Added department field
+    department = db.Column(db.String(50))
     peripheral_detail = db.Column(db.String(100))
     status = db.Column(db.String(50), nullable=False)
     person_name = db.Column(db.String(100), nullable=True)
@@ -37,7 +39,6 @@ def run_global_maintenance():
     with app.app_context():
         try:
             today = datetime.now().date()
-            # Bulk update: Flag all items where status is Loaned and date is past
             InventoryScan.query.filter(
                 InventoryScan.status == 'Loaned',
                 InventoryScan.return_date < today,
@@ -51,8 +52,8 @@ def run_global_maintenance():
 def init_db():
     with app.app_context():
         db.create_all()
-        # Ensure all columns exist for new features, including department
-        cols = ["device_type", "department", "person_name", "email", "return_date", "is_flagged", "timestamp"]
+        # Migration: Ensure all columns exist for new features
+        cols = ["imei", "mac_address", "device_type", "department", "person_name", "email", "return_date", "is_flagged", "timestamp"]
         for col in cols:
             try:
                 db.session.execute(text(f"ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS {col} VARCHAR"))
@@ -61,8 +62,8 @@ def init_db():
 
 @app.route('/')
 def index():
-    run_global_maintenance() # Scan every row for flags on load
-    recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(50).all()
+    run_global_maintenance()
+    recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(100).all()
     return render_template('index.html', scans=recent_scans)
 
 @app.route('/scanned', methods=['POST'])
@@ -79,7 +80,7 @@ def scanned():
         except: r_date = None
     
     try:
-        # Check repair history for this specific code
+        # Check repair history for flagging
         repair_count = InventoryScan.query.filter_by(code=code, status='Repair').count()
         
         flag_it = False
@@ -90,8 +91,10 @@ def scanned():
 
         new_scan = InventoryScan(
             code=code,
+            imei=data.get("imei"),
+            mac_address=data.get("mac_address"),
             device_type=data.get("device_type"),
-            department=data.get("department"), # Save department
+            department=data.get("department"),
             peripheral_detail=data.get("peripheral_detail"),
             status=status,
             person_name=data.get("person_name"),
@@ -103,6 +106,21 @@ def scanned():
         db.session.add(new_scan)
         db.session.commit()
         return jsonify({"status": "success", "is_flagged": flag_it})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/delete', methods=['POST'])
+def delete_scans():
+    """Handles bulk deletion of selected scan IDs."""
+    data = request.json
+    ids = data.get('ids', [])
+    if not ids:
+        return jsonify({"status": "error", "message": "No items selected"}), 400
+    try:
+        InventoryScan.query.filter(InventoryScan.id.in_(ids)).delete(synchronize_session=False)
+        db.session.commit()
+        return jsonify({"status": "success"})
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
