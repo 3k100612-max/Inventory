@@ -60,23 +60,15 @@ def setup_database():
             db.create_all()
             
             # Check if the Admin table actually has a Super Admin
-            admin = Admin.query.filter_by(username='admin').first()
-            if admin is None:
+            if not Admin.query.filter_by(username='admin').first():
                 hpw = generate_password_hash('admin123')
-
-                super_user = Admin(
-                    username='admin',
-                    password_hash=hpw,
-                    role='super_admin'
-                )
-                db.session.add(super_user)
-                db.session.commit()
+                super_user = Admin(username='admin', password_hash=hpw, role='super_admin')
+                db.add(super_user)
+                db.commit()
                 print(">>> Default Super Admin created (admin / admin123)")
-            else:
-                print(">>> Admin already exists.")
         except Exception as e:
-        db.session.rollback()
-        print(f">>> DATABASE SETUP ERROR: {e}", file=sys.stderr)
+            print(f">>> DATABASE SETUP ERROR: {e}", file=sys.stderr)
+
 # --- ROUTES ---
 
 @app.route('/login', methods=['GET', 'POST'])
