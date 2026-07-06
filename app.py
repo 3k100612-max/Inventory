@@ -31,38 +31,45 @@ class InventoryScan(db.Model):
     is_flagged = db.Column(db.Boolean, default=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
-with app.app_context():
-    db.create_all()
-    try:
-        # Migration: Ensure all monitoring and loan columns exist
-        db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS device_type VARCHAR(50)"))
-        db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS peripheral_detail VARCHAR(100)"))
-        db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS person_name VARCHAR(100)"))
-        db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS email VARCHAR(120)"))
-        db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS return_date DATE"))
-        db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS notes TEXT"))
-        db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN DEFAULT FALSE"))
-        db.session.execute(text("ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP"))
-        db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-        print(f"Migration Notice: {e}", file=sys.stderr)
+def init_db():
+    """Safety function to create table and add missing columns without crashing."""
+    with app.app_context():
+        try:
+            db.create_all()
+            # Individual migrations to ensure columns exist
+            migrations = [
+                "ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS device_type VARCHAR(50)",
+                "ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS peripheral_detail VARCHAR(100)",
+                "ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS person_name VARCHAR(100)",
+                "ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS email VARCHAR(120)",
+                "ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS return_date DATE",
+                "ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS notes TEXT",
+                "ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN DEFAULT FALSE",
+                "ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+            ]
+            for cmd in migrations:
+                try:
+                    db.session.execute(text(cmd))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+        except Exception as e:
+            print(f"DB Init Warning: {e}", file=sys.stderr)
 
 @app.route('/')
 def index():
-    # Fetch recent history, newest first
-    recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(20).all()
-    
-    # Check for overdue items on every page load
-    today = datetime.now().date()
-    for scan in recent_scans:
-        if scan.status == 'Loaned' and scan.return_date and scan.return_date < today:
-            if not scan.is_flagged:
-                scan.is_flagged = True
-                db.session.commit()
-                # Logic to trigger email could be added here
-    
-    return render_template('index.html', scans=recent_scans)
+    try:
+        recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(20).all()
+        # Auto-flag overdue items on page load
+        today = datetime.now().date()
+        for scan in recent_scans:
+            if scan.status == 'Loaned' and scan.return_date and scan.return_date < today:
+                if not scan.is_flagged:
+                    scan.is_flagged = True
+                    db.session.commit()
+        return render_template('index.html', scans=recent_scans)
+    except Exception as e:
+        return f"<h3>Database Error</h3><p>{str(e)}</p>", 500
 
 @app.route('/scanned', methods=['POST'])
 def scanned():
@@ -71,14 +78,20 @@ def scanned():
     status = data.get("status")
     r_date_str = data.get("return_date")
     
-    r_date = datetime.strptime(r_date_str, '%Y-%m-%d').date() if r_date_str else None
+    # Safety: Parse date only if provided
+    r_date = None
+    if r_date_str and r_date_str.strip():
+        try:
+            r_date = datetime.strptime(r_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            r_date = None
     
     try:
-        # Flagging Logic: Check if item has been repaired 3+ times
+        # Flagging: 3rd+ Repair
         repair_count = InventoryScan.query.filter_by(code=code, status='Repair').count()
         flag_it = (status == 'Repair' and repair_count >= 2)
         
-        # Immediate flag if a Loaned item is already overdue at time of scan
+        # Flagging: Immediate Overdue
         if status == 'Loaned' and r_date and r_date < datetime.now().date():
             flag_it = True
 
@@ -95,11 +108,11 @@ def scanned():
         )
         db.session.add(new_scan)
         db.session.commit()
-        
         return jsonify({"status": "success", "is_flagged": flag_it})
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8506 debug=True)
+    init_db()
+    app.run(host='0.0.0.0', port=8506)
