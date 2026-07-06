@@ -3,10 +3,9 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
 from datetime import datetime
 import os
-import sys
 import logging
 
-# Setup logging to help you see errors in your deployment logs
+# Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -18,8 +17,8 @@ DB_PASS = os.environ.get('DB_PASS', 'P12345')
 DB_HOST = os.environ.get('DB_HOST', 'inventory-inventory-sqaoox')
 DB_NAME = os.environ.get('DB_NAME', 'inventory')
 
-# Use 'postgresql://' (required by many modern providers) and add SSL for cloud DBs
-app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}'
+# Connection string with SSL requirement for cloud databases
+app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}?sslmode=require'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['PROPAGATE_EXCEPTIONS'] = True
 
@@ -41,14 +40,27 @@ class InventoryScan(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
 def init_db():
-    """Initializes the database safely."""
+    """Initializes the database and handles schema migrations."""
     with app.app_context():
         try:
-            # Check connection first
+            # Check connection
             db.session.execute(text('SELECT 1'))
             db.create_all()
             
-            # Safe migration logic with correct data types
+            # 1. FIX: Specifically convert return_date to DATE type if it is currently VARCHAR
+            try:
+                db.session.execute(text("""
+                    ALTER TABLE inventory_scan 
+                    ALTER COLUMN return_date TYPE DATE 
+                    USING return_date::date
+                """))
+                db.session.commit()
+                logger.info("Successfully migrated return_date to DATE type.")
+            except Exception as e:
+                db.session.rollback()
+                logger.info(f"Migration check: return_date column already correct or table empty. ({e})")
+
+            # 2. Ensure other columns exist (Safety net)
             cols = {
                 "imei": "VARCHAR(100)",
                 "mac_address": "VARCHAR(100)",
@@ -56,7 +68,6 @@ def init_db():
                 "department": "VARCHAR(50)",
                 "person_name": "VARCHAR(100)",
                 "email": "VARCHAR(120)",
-                "return_date": "DATE",
                 "is_flagged": "BOOLEAN DEFAULT FALSE",
                 "timestamp": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
             }
@@ -65,11 +76,12 @@ def init_db():
                 try:
                     db.session.execute(text(f"ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS {col} {dtype}"))
                     db.session.commit()
-                except Exception as e:
+                except Exception:
                     db.session.rollback()
+            
             logger.info("Database connection and schema check complete.")
         except Exception as e:
-            logger.error(f"DB Init Error (App will attempt to continue): {e}")
+            logger.error(f"DB Init Error: {e}")
 
 @app.route('/health')
 def health():
@@ -91,7 +103,8 @@ def index():
         return render_template('index.html', scans=recent_scans)
     except Exception as e:
         logger.error(f"Index Error: {e}")
-        return "Database Error. Please check logs.", 500
+        # Return specific error to browser for easier debugging
+        return f"Database Error: {str(e)}", 500
 
 @app.route('/scanned', methods=['POST'])
 def scanned():
@@ -152,6 +165,5 @@ def delete_scans():
 
 if __name__ == '__main__':
     init_db()
-    # Use 0.0.0.0 and dynamic PORT for cloud compatibility
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
