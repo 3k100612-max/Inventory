@@ -11,21 +11,13 @@
         .card { border: none; border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.08); margin-bottom: 20px; overflow: hidden; }
         
         /* SCANNER UI */
-        #reader-container { position: relative; width: 100%; border-radius: 12px; overflow: hidden; background: #000; }
+        #reader-container { position: relative; width: 100%; border-radius: 12px; overflow: hidden; background: #000; min-height: 250px; }
         #reader { width: 100%; }
-        .scanner-laser { position: absolute; top: 0; left: 0; width: 100%; height: 2px; background: rgba(255, 0, 0, 0.7); box-shadow: 0 0 15px 2px rgba(255, 0, 0, 0.5); z-index: 10; display: none; animation: scan-move 2s infinite linear; }
-        @keyframes scan-move { 0% { top: 0%; } 50% { top: 100%; } 100% { top: 0%; } }
         .flash-success { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(40, 167, 69, 0.4); z-index: 20; display: none; }
         
-        /* BULK INDICATOR */
-        .bulk-indicator { display: none; background: #e7f3ff; border: 1px solid #bde0fe; border-radius: 8px; padding: 10px; margin-bottom: 15px; }
-        
-        /* BUTTONS & FORMS */
-        .btn-group-custom { display: flex; flex-wrap: wrap; gap: 8px; }
-        .btn-group-custom .btn { flex: 1 1 auto; border-radius: 8px !important; }
-        .scan-btn { height: 60px; font-size: 1.2rem; font-weight: bold; }
-        #return_date_section { display: none; }
-        .note-text { font-size: 0.85rem; color: #6c757d; font-style: italic; display: block; }
+        /* SESSION UI */
+        .session-info-bar { display: none; background: #fff; border-left: 5px solid #0d6efd; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
+        .note-text { font-size: 0.85rem; color: #6c757d; font-style: italic; }
     </style>
 </head>
 <body>
@@ -33,31 +25,39 @@
 <div class="container-fluid">
     <h2 class="text-center mb-4">Inventory Control</h2>
 
-    <!-- BULK MODE INDICATOR -->
-    <div id="bulk_indicator" class="bulk-indicator shadow-sm">
+    <!-- ACTIVE SESSION DISPLAY -->
+    <div id="session_info" class="session-info-bar card shadow-sm">
         <div class="d-flex justify-content-between align-items-center">
             <div>
-                <strong>Bulk Mode Active:</strong> 
-                <span id="active_status" class="badge bg-primary"></span> 
-                <span id="active_dept" class="badge bg-secondary"></span>
+                <span id="ui_mode" class="badge bg-dark me-1"></span>
+                <span id="ui_device" class="badge bg-info text-dark me-1"></span>
+                <span id="ui_status" class="badge bg-primary"></span>
+                <div id="ui_notes_display" class="note-text mt-1"></div>
             </div>
-            <button class="btn btn-sm btn-danger" onclick="exitBulkMode()">Exit Bulk</button>
+            <button class="btn btn-success fw-bold" onclick="finishSession()">DONE SCANNING</button>
         </div>
     </div>
 
     <!-- SCANNER SECTION -->
-    <div class="card">
-        <div id="reader-container">
-            <div id="reader"></div>
-            <div id="laser" class="scanner-laser"></div>
-            <div id="flash" class="flash-success"></div>
-        </div>
-        <div class="p-3">
-            <div class="d-grid gap-2">
-                <button id="start_btn" class="btn btn-primary scan-btn" onclick="startScanner()">Open Camera Scanner</button>
-                <button id="stop_btn" class="btn btn-secondary" onclick="stopScanner()" style="display:none;">Close Camera</button>
+    <div id="scanner_wrapper" style="display:none;">
+        <div class="card">
+            <div id="reader-container">
+                <div id="reader"></div>
+                <div id="flash" class="flash-success"></div>
             </div>
-            <input type="text" id="manual_code" class="form-control mt-3" placeholder="Or type code manually...">
+            <div class="p-3">
+                <div class="text-center mb-2 small text-muted">Ready to scan...</div>
+                <input type="text" id="manual_code" class="form-control" placeholder="Or type code manually...">
+            </div>
+        </div>
+    </div>
+
+    <!-- START BUTTON -->
+    <div id="start_screen" class="text-center py-5">
+        <div class="card p-5 border-0 shadow-sm">
+            <h4>Ready to scan?</h4>
+            <p class="text-muted">Configure your session settings to begin.</p>
+            <button class="btn btn-primary btn-lg px-5 shadow" onclick="showSetup()">+ Start New Session</button>
         </div>
     </div>
 
@@ -69,9 +69,9 @@
                 <thead>
                     <tr>
                         <th>Item Code</th>
+                        <th>Device</th>
                         <th>Status</th>
-                        <th>Dept</th>
-                        <th>Info</th>
+                        <th>Notes</th>
                     </tr>
                 </thead>
                 <tbody id="history_body">
@@ -81,12 +81,9 @@
                             {{ scan.code }}
                             {% if scan.is_flagged %} 🚩{% endif %}
                         </td>
-                        <td><span class="badge {% if scan.status == 'In Maintenance' %}bg-warning text-dark{% elif scan.status == 'Retired' %}bg-danger{% else %}bg-primary{% endif %}">{{ scan.status }}</span></td>
-                        <td><span class="badge bg-secondary">{{ scan.department or '-' }}</span></td>
-                        <td>
-                            {% if scan.return_date %}<small class="d-block">Return: {{ scan.return_date }}</small>{% endif %}
-                            <span class="note-text">{{ scan.notes or '' }}</span>
-                        </td>
+                        <td>{{ scan.device_type }}</td>
+                        <td><span class="badge bg-secondary">{{ scan.status }}</span></td>
+                        <td class="note-text">{{ scan.notes or '' }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -95,66 +92,51 @@
     </div>
 </div>
 
-<!-- MODAL: MODE -->
-<div class="modal fade" id="modeModal" data-bs-backdrop="static" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header"><h5 class="modal-title">Item Scanned: <span id="modal_code" class="text-primary"></span></h5></div>
-            <div class="modal-body text-center">
-                <p>Choose processing mode:</p>
-                <div class="d-grid gap-3">
-                    <button class="btn btn-outline-primary btn-lg" onclick="setupEntry('once')">Single Item</button>
-                    <button class="btn btn-outline-success btn-lg" onclick="setupEntry('multiple')">Bulk Mode (Keep Scanning)</button>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- MODAL: DETAILS -->
-<div class="modal fade" id="detailsModal" data-bs-backdrop="static" tabindex="-1">
+<!-- SETUP MODAL: STEPS 1-4 -->
+<div class="modal fade" id="setupModal" data-bs-backdrop="static" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header"><h5 class="modal-title">Set Details</h5></div>
+            <div class="modal-header bg-light"><h5 class="modal-title">Session Configuration</h5></div>
             <div class="modal-body">
-                <label class="fw-bold mb-2">Status</label>
-                <div class="btn-group-custom mb-3">
-                    <input type="radio" class="btn-check" name="m_status" id="s1" value="In Use" onchange="toggleReturnDate()" checked>
-                    <label class="btn btn-outline-primary" for="s1">In Use</label>
-                    <input type="radio" class="btn-check" name="m_status" id="s2" value="Loaned" onchange="toggleReturnDate()">
-                    <label class="btn btn-outline-primary" for="s2">Loaned</label>
-                    <input type="radio" class="btn-check" name="m_status" id="s3" value="In Stock" onchange="toggleReturnDate()">
-                    <label class="btn btn-outline-primary" for="s3">In Stock</label>
-                    <input type="radio" class="btn-check" name="m_status" id="s4" value="In Maintenance" onchange="toggleReturnDate()">
-                    <label class="btn btn-outline-warning" for="s4">Repair</label>
-                    <input type="radio" class="btn-check" name="m_status" id="s5" value="Retired" onchange="toggleReturnDate()">
-                    <label class="btn btn-outline-danger" for="s5">Retired</label>
+                
+                <!-- 1. MODE -->
+                <label class="fw-bold small text-muted mb-1">1. SCAN MODE</label>
+                <div class="btn-group w-100 mb-3">
+                    <input type="radio" class="btn-check" name="mode" id="m1" value="single" checked>
+                    <label class="btn btn-outline-primary" for="m1">Single Scan</label>
+                    <input type="radio" class="btn-check" name="mode" id="m2" value="multiple">
+                    <label class="btn btn-outline-primary" for="m2">Multiple Scan</label>
                 </div>
 
-                <div id="return_date_section" class="mb-3">
-                    <label class="fw-bold mb-2 text-primary">Expected Return Date</label>
-                    <input type="date" id="m_return_date" class="form-control">
+                <!-- 2. DEVICE -->
+                <label class="fw-bold small text-muted mb-1">2. DEVICE TYPE</label>
+                <select id="device_type" class="form-select mb-2" onchange="togglePeripheralInput()">
+                    <option value="Laptop">Laptop</option>
+                    <option value="Mobile">Mobile</option>
+                    <option value="Monitor">Monitor</option>
+                    <option value="Docking Station">Docking Station</option>
+                    <option value="Peripherals">Peripherals</option>
+                </select>
+                <input type="text" id="peri_detail" class="form-control mb-3" placeholder="Specify peripheral (e.g. Mouse, Keyboard)" style="display:none;">
+
+                <!-- 3. STATUS -->
+                <label class="fw-bold small text-muted mb-1">3. STATUS</label>
+                <div class="row g-2 mb-3">
+                    <div class="col-4"><input type="radio" class="btn-check" name="status" id="s1" value="In Stock" checked><label class="btn btn-sm btn-outline-secondary w-100" for="s1">In Stock</label></div>
+                    <div class="col-4"><input type="radio" class="btn-check" name="status" id="s2" value="In Use"><label class="btn btn-sm btn-outline-secondary w-100" for="s2">In Use</label></div>
+                    <div class="col-4"><input type="radio" class="btn-check" name="status" id="s3" value="Returned"><label class="btn btn-sm btn-outline-secondary w-100" for="s3">Returned</label></div>
+                    <div class="col-4"><input type="radio" class="btn-check" name="status" id="s4" value="Released"><label class="btn btn-sm btn-outline-secondary w-100" for="s4">Released</label></div>
+                    <div class="col-4"><input type="radio" class="btn-check" name="status" id="s5" value="Repair"><label class="btn btn-sm btn-outline-warning w-100" for="s5">Repair</label></div>
+                    <div class="col-4"><input type="radio" class="btn-check" name="status" id="s6" value="Retired"><label class="btn btn-sm btn-outline-danger w-100" for="s6">Retired</label></div>
                 </div>
 
-                <label class="fw-bold mb-2">Department</label>
-                <div class="btn-group-custom mb-3">
-                    <input type="radio" class="btn-check" name="m_dept" id="d1" value="IT" checked>
-                    <label class="btn btn-outline-secondary" for="d1">IT</label>
-                    <input type="radio" class="btn-check" name="m_dept" id="d2" value="HR">
-                    <label class="btn btn-outline-secondary" for="d2">HR</label>
-                    <input type="radio" class="btn-check" name="m_dept" id="d3" value="Finance">
-                    <label class="btn btn-outline-secondary" for="d3">Fin</label>
-                    <input type="radio" class="btn-check" name="m_dept" id="d4" value="Procurement">
-                    <label class="btn btn-outline-secondary" for="d4">Proc</label>
-                    <input type="radio" class="btn-check" name="m_dept" id="d5" value="Admin">
-                    <label class="btn btn-outline-secondary" for="d5">Admin</label>
-                </div>
+                <!-- 4. NOTES -->
+                <label class="fw-bold small text-muted mb-1">4. NOTES (OPTIONAL)</label>
+                <textarea id="m_notes" class="form-control" rows="2" placeholder="Add any details..."></textarea>
 
-                <label class="fw-bold mb-2">Notes (Optional)</label>
-                <textarea id="m_notes" class="form-control" rows="2"></textarea>
             </div>
-            <div class="modal-footer">
-                <button class="btn btn-success w-100 py-2" onclick="processSave()">Confirm & Start</button>
+            <div class="modal-footer border-0">
+                <button class="btn btn-primary w-100 py-2 shadow-sm" onclick="confirmSetup()">Confirm & Start Scanning</button>
             </div>
         </div>
     </div>
@@ -163,100 +145,94 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 let html5QrCode;
-let currentCode = "";
-let scanMode = "once";
-let bulkStatus = null, bulkDept = null, bulkReturnDate = null, bulkNotes = null;
+let session = { mode: 'single', device: '', peri: '', status: '', notes: '' };
+const setupModal = new bootstrap.Modal(document.getElementById('setupModal'));
 
-const modeModal = new bootstrap.Modal(document.getElementById('modeModal'));
-const detailsModal = new bootstrap.Modal(document.getElementById('detailsModal'));
+function showSetup() { setupModal.show(); }
 
-function toggleReturnDate() {
-    const status = document.querySelector('input[name="m_status"]:checked').value;
-    document.getElementById('return_date_section').style.display = (status === 'Loaned') ? 'block' : 'none';
+function togglePeripheralInput() {
+    const isPeri = document.getElementById('device_type').value === 'Peripherals';
+    document.getElementById('peri_detail').style.display = isPeri ? 'block' : 'none';
 }
 
-function startScanner() {
-    document.getElementById('start_btn').style.display = 'none';
-    document.getElementById('stop_btn').style.display = 'block';
-    document.getElementById('laser').style.display = 'block';
+function confirmSetup() {
+    session.mode = document.querySelector('input[name="mode"]:checked').value;
+    session.device = document.getElementById('device_type').value;
+    session.peri = document.getElementById('peri_detail').value;
+    session.status = document.querySelector('input[name="status"]:checked').value;
+    session.notes = document.getElementById('m_notes').value;
+
+    setupModal.hide();
+    startScanningUI();
+}
+
+function startScanningUI() {
+    document.getElementById('start_screen').style.display = 'none';
+    document.getElementById('session_info').style.display = 'block';
+    document.getElementById('scanner_wrapper').style.display = 'block';
+    
+    // Update Header UI
+    document.getElementById('ui_mode').innerText = session.mode.toUpperCase();
+    document.getElementById('ui_device').innerText = session.device + (session.peri ? `: ${session.peri}` : '');
+    document.getElementById('ui_status').innerText = session.status;
+    document.getElementById('ui_notes_display').innerText = session.notes ? "Notes: " + session.notes : "";
+
     html5QrCode = new Html5Qrcode("reader");
-    const config = { fps: 15, qrbox: { width: 280, height: 180 }, aspectRatio: 1.0 };
+    const config = { fps: 15, qrbox: { width: 250, height: 250 } };
     html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess);
 }
 
-function stopScanner() {
-    if (html5QrCode) {
-        html5QrCode.stop().then(() => {
-            document.getElementById('start_btn').style.display = 'block';
-            document.getElementById('stop_btn').style.display = 'none';
-            document.getElementById('laser').style.display = 'none';
-        });
-    }
-}
-
 function onScanSuccess(decodedText) {
-    if (navigator.vibrate) navigator.vibrate(100);
     const flash = document.getElementById('flash');
     flash.style.display = 'block';
     setTimeout(() => flash.style.display = 'none', 200);
+    if (navigator.vibrate) navigator.vibrate(100);
 
-    currentCode = decodedText;
-    if (bulkStatus) quickSave(currentCode, bulkStatus, bulkDept, bulkReturnDate, bulkNotes);
-    else { document.getElementById('modal_code').innerText = currentCode; modeModal.show(); }
+    saveData(decodedText);
 }
 
-function setupEntry(mode) {
-    scanMode = mode;
-    modeModal.hide();
-    detailsModal.show();
-}
-
-function processSave() {
-    const status = document.querySelector('input[name="m_status"]:checked').value;
-    const dept = document.querySelector('input[name="m_dept"]:checked').value;
-    const rDate = document.getElementById('m_return_date').value;
-    const notes = document.getElementById('m_notes').value;
-
-    if (scanMode === 'multiple') {
-        bulkStatus = status; bulkDept = dept; bulkReturnDate = rDate; bulkNotes = notes;
-        updateBulkUI();
-    }
-    quickSave(currentCode, status, dept, rDate, notes);
-    detailsModal.hide();
-}
-
-function quickSave(code, status, dept, rDate, notes) {
+function saveData(code) {
     fetch('/scanned', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, status, department: dept, return_date: rDate, notes })
+        body: JSON.stringify({
+            code: code,
+            device_type: session.device,
+            peripheral_detail: session.peri,
+            status: session.status,
+            notes: session.notes
+        })
     })
     .then(res => res.json())
     .then(data => {
         if (data.is_flagged) alert(data.warning);
-        if (scanMode === 'once') location.reload();
-        else addRowToTable(code, status, dept, notes, data.is_flagged);
+        
+        // Add row to table immediately
+        const row = `<tr>
+            <td class="fw-bold">${code}${data.is_flagged ? ' 🚩' : ''}</td>
+            <td>${session.device}</td>
+            <td><span class="badge bg-secondary">${session.status}</span></td>
+            <td class="note-text">${session.notes}</td>
+        </tr>`;
+        document.getElementById('history_body').insertAdjacentHTML('afterbegin', row);
+
+        // Auto-close if Single Mode
+        if (session.mode === 'single') {
+            finishSession();
+        }
     });
 }
 
-function updateBulkUI() {
-    document.getElementById('bulk_indicator').style.display = 'block';
-    document.getElementById('active_status').innerText = bulkStatus;
-    document.getElementById('active_dept').innerText = bulkDept;
-}
-
-function exitBulkMode() { location.reload(); }
-
-function addRowToTable(code, status, dept, notes, is_flagged) {
-    const tbody = document.getElementById('history_body');
-    const rowClass = is_flagged ? 'class="table-danger"' : '';
-    const flagIcon = is_flagged ? ' 🚩' : '';
-    const row = `<tr ${rowClass}><td class="fw-bold">${code}${flagIcon}</td><td><span class="badge bg-primary">${status}</span></td><td><span class="badge bg-secondary">${dept}</span></td><td><span class="note-text">${notes || ''}</span></td></tr>`;
-    tbody.insertAdjacentHTML('afterbegin', row);
+function finishSession() {
+    if (html5QrCode) {
+        html5QrCode.stop().then(() => location.reload()).catch(() => location.reload());
+    } else {
+        location.reload();
+    }
 }
 
 document.getElementById('manual_code').addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') { onScanSuccess(this.value); this.value = ''; }
+    if (e.key === 'Enter') { saveData(this.value); this.value = ''; }
 });
 </script>
 </body>
