@@ -53,13 +53,14 @@ def index():
     # Fetch recent history, newest first
     recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(20).all()
     
-    # Logic to flag overdue items on page load
+    # Check for overdue items on every page load
     today = datetime.now().date()
     for scan in recent_scans:
         if scan.status == 'Loaned' and scan.return_date and scan.return_date < today:
             if not scan.is_flagged:
                 scan.is_flagged = True
                 db.session.commit()
+                # Logic to trigger email could be added here
     
     return render_template('index.html', scans=recent_scans)
 
@@ -70,15 +71,14 @@ def scanned():
     status = data.get("status")
     r_date_str = data.get("return_date")
     
-    # Date conversion
     r_date = datetime.strptime(r_date_str, '%Y-%m-%d').date() if r_date_str else None
     
     try:
-        # Flagging Logic 1: Frequent Repairs (3rd time+)
+        # Flagging Logic: Check if item has been repaired 3+ times
         repair_count = InventoryScan.query.filter_by(code=code, status='Repair').count()
         flag_it = (status == 'Repair' and repair_count >= 2)
         
-        # Flagging Logic 2: Immediate overdue detection
+        # Immediate flag if a Loaned item is already overdue at time of scan
         if status == 'Loaned' and r_date and r_date < datetime.now().date():
             flag_it = True
 
