@@ -8,6 +8,7 @@ import sys
 app = Flask(__name__)
 
 # Database Configuration
+# NOTE: If running locally, ensure DB_HOST is 'localhost' or your local IP
 DB_USER = os.environ.get('DB_USER', 'postgres')
 DB_PASS = os.environ.get('DB_PASS', 'P12345')
 DB_HOST = os.environ.get('DB_HOST', 'inventory-inventory-sqaoox')
@@ -35,37 +36,27 @@ class InventoryScan(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
 def init_db():
-    """Initializes the database. Called during app startup."""
+    """Initializes the database. Ensures tables and columns exist."""
     with app.app_context():
         try:
             db.create_all()
-            # Ensure columns exist (useful for incremental updates)
+            # List of columns to check/add for incremental updates
             cols = ["imei", "mac_address", "device_type", "department", "person_name", "email", "return_date", "is_flagged", "timestamp"]
             for col in cols:
                 try:
-                    # PostgreSQL specific 'ADD COLUMN IF NOT EXISTS'
                     db.session.execute(text(f"ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS {col} VARCHAR"))
                     db.session.commit()
                 except Exception:
                     db.session.rollback()
-            print("Database initialized successfully.")
+            print("Database initialization successful.")
         except Exception as e:
-            print(f"DB Connection Error: {e}", file=sys.stderr)
+            print(f"Database connection failed: {e}", file=sys.stderr)
 
-# RUN INIT IMMEDIATELY
+# Call init_db here so it runs on every startup (Gunicorn, Flask Run, etc.)
 init_db()
 
-@app.route('/')
-def index():
-    try:
-        # Wrap maintenance in a try-block so it doesn't crash the whole UI
-        run_global_maintenance()
-        recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(100).all()
-        return render_template('index.html', scans=recent_scans)
-    except Exception as e:
-        return f"Database Error: {str(e)}", 500
-
 def run_global_maintenance():
+    """Flags overdue items."""
     try:
         today = datetime.now().date()
         InventoryScan.query.filter(
@@ -76,7 +67,17 @@ def run_global_maintenance():
         db.session.commit()
     except Exception as e:
         db.session.rollback()
-        print(f"Maintenance failed: {e}")
+        print(f"Maintenance failed: {e}", file=sys.stderr)
+
+@app.route('/')
+def index():
+    try:
+        run_global_maintenance()
+        recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(100).all()
+        return render_template('index.html', scans=recent_scans)
+    except Exception as e:
+        # Prevents a total crash if the DB is unreachable
+        return f"Database connectivity error: {str(e)}", 500
 
 @app.route('/scanned', methods=['POST'])
 def scanned():
@@ -95,7 +96,7 @@ def scanned():
         code = data.get("code")
         status = data.get("status")
         
-        # Check for flag conditions
+        # Logic for flagging
         repair_count = InventoryScan.query.filter_by(code=code, status='Repair').count()
         flag_it = False
         if status == 'Repair' and repair_count >= 2:
@@ -127,6 +128,8 @@ def scanned():
 def delete_scans():
     data = request.json
     ids = data.get('ids', [])
+    if not ids:
+        return jsonify({"status": "error", "message": "No items selected"}), 400
     try:
         InventoryScan.query.filter(InventoryScan.id.in_(ids)).delete(synchronize_session=False)
         db.session.commit()
