@@ -6,21 +6,35 @@ from datetime import datetime
 import os
 import sys
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 app = Flask(__name__)
-# In production, change this to an environment variable for security
-app.secret_key = os.environ.get('SECRET_KEY', 'super-secret-inventory-key')
+# Security: Always use an environment variable for the secret key in production
+app.secret_key = os.environ.get('SECRET_KEY', 'default-dev-key-change-this')
 
 # --- Database Configuration ---
-# Defaults changed to 'db' or 'localhost' for better portability
 DB_USER = os.environ.get('DB_USER', 'postgres')
 DB_PASS = os.environ.get('DB_PASS', 'P12345')
 DB_HOST = os.environ.get('DB_HOST', 'inventory-inventory-sqaoox') 
 DB_NAME = os.environ.get('DB_NAME', 'inventory')
+DB_PORT = os.environ.get('DB_PORT', '5432')
 
-app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}'
+app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-# Timeout prevents the app from hanging if the DB container isn't ready yet
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {"connect_args": {"connect_timeout": 5}}
+
+# --- FIXED: Connection Pool Settings for Production ---
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    "pool_size": 10,           # Base connections
+    "max_overflow": 5,         # Extra connections during spikes
+    "pool_timeout": 30,        # Seconds to wait for a connection
+    "pool_recycle": 1800,      # Recycle connections every 30 mins to prevent stale links
+    "connect_args": {"connect_timeout": 10}
+}
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
@@ -32,7 +46,7 @@ class Admin(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
     password_hash = db.Column(db.String(200), nullable=False)
-    role = db.Column(db.String(20), default='admin') # 'super_admin' or 'admin'
+    role = db.Column(db.String(20), default='admin')
 
 class InventoryScan(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -54,31 +68,24 @@ class InventoryScan(db.Model):
 def load_user(user_id):
     return Admin.query.get(int(user_id))
 
-# --- DATABASE INITIALIZATION ---
+# --- FIXED: Database Initialization Logic ---
 def setup_database():
     with app.app_context():
         try:
-            # Create all tables
             db.create_all()
-            
-            # FIXED: Logic check. Create admin ONLY if it doesn't exist.
+            # Check if admin is missing before creating
             if not Admin.query.filter_by(username='admin').first():
                 hpw = generate_password_hash('admin123')
-                # Removed manual ID assignment to let DB handle auto-increment
-                super_user = Admin(
-                    username='admin', 
-                    password_hash=hpw, 
-                    role='super_admin'
-                )
+                super_user = Admin(username='admin', password_hash=hpw, role='super_admin')
                 db.session.add(super_user)
                 db.session.commit()
                 print(">>> Default Super Admin created (admin / admin123)")
             else:
-                print(">>> Database ready: Admin user already exists.")
+                print(">>> Database ready.")
         except Exception as e:
             print(f">>> DATABASE SETUP ERROR: {e}", file=sys.stderr)
 
-# IMPORTANT: Call setup here so it runs during 'flask run'
+# Call setup immediately
 setup_database()
 
 # --- ROUTES ---
@@ -149,5 +156,4 @@ def add_admin():
     return jsonify({"status": "success", "message": f"Admin {username} created"})
 
 if __name__ == "__main__":
-    # This block is used for 'python app.py', but not for 'flask run'
     app.run(host='0.0.0.0', port=8506)
