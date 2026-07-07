@@ -3,170 +3,170 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Asset Management Pro</title>
+    <title>Inventory Monitor Pro</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { background-color: #f8f9fa; font-family: 'Inter', sans-serif; }
-        .overdue-row { background-color: #fff5f5 !important; border-left: 5px solid #dc3545; }
-        .status-loan { color: #0dcaf0; font-weight: bold; }
-        .status-repair { color: #ffc107; font-weight: bold; }
-        .scanner-active { border: 3px solid #0d6efd; border-radius: 15px; }
-        #feedback_toast { position: fixed; top: 20px; right: 20px; z-index: 9999; display: none; }
+        body { background-color: #f4f7f6; padding: 20px; font-family: 'Segoe UI', sans-serif; }
+        .card { border: none; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); margin-bottom: 20px; }
+        #reader-container { position: relative; width: 100%; border-radius: 15px; overflow: hidden; background: #222; min-height: 300px; }
+        .session-info-bar { display: none; background: #fff; border-left: 6px solid #0d6efd; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
+        .overdue-row { background-color: #fff5f5 !important; border-left: 4px solid #dc3545; }
+        .active-scan-field { border: 3px solid #0d6efd !important; background-color: #e7f1ff !important; }
+        .status-badge { font-size: 0.7rem; text-transform: uppercase; font-weight: bold; }
+        #save_toast { position: fixed; top: 20px; right: 20px; z-index: 9999; display: none; }
+        .btn-pulse { animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
     </style>
 </head>
 <body>
 
-<div id="feedback_toast" class="alert alert-success shadow-lg">✅ Scan Successful</div>
+<div id="save_toast" class="alert alert-success shadow">✅ Record Saved!</div>
 
-<div class="container py-4">
+<div class="container">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="fw-bold">Asset Control Center</h2>
-        <div>
-            <a href="/export" class="btn btn-outline-success btn-sm">📊 Export CSV</a>
-            <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#setupModal">+ New Session</button>
-        </div>
+        <h2 class="fw-bold text-dark">Inventory Control</h2>
+        <button class="btn btn-outline-secondary btn-sm" onclick="location.reload()">🔄 Sync All</button>
     </div>
 
     <!-- SESSION INFO -->
-    <div id="session_bar" class="card p-3 mb-4 shadow-sm border-0" style="display:none;">
+    <div id="session_info" class="session-info-bar card shadow-sm">
         <div class="row align-items-center">
-            <div class="col-md-9">
-                <span id="label_mode" class="badge bg-dark"></span>
-                <span id="label_type" class="badge bg-primary"></span>
-                <span id="label_dept" class="badge bg-secondary"></span>
-                <span id="label_status" class="badge bg-info text-dark"></span>
+            <div class="col-md-8">
+                <h5 class="mb-1">User: <span id="ui_user" class="text-primary"></span></h5>
+                <div class="d-flex gap-2 flex-wrap">
+                    <span id="ui_mode" class="badge bg-dark"></span>
+                    <span id="ui_status" class="badge bg-primary"></span>
+                    <span id="ui_dept" class="badge bg-secondary"></span>
+                </div>
             </div>
-            <div class="col-md-3 text-end">
-                <button class="btn btn-sm btn-danger" onclick="location.reload()">End Session</button>
+            <div class="col-md-4 text-end">
+                <button class="btn btn-sm btn-danger" onclick="finishSession()">End Session</button>
             </div>
         </div>
     </div>
 
-    <!-- SCANNER UI -->
-    <div id="scanner_ui" style="display:none;" class="mb-4">
-        <div class="card p-3 shadow-sm">
-            <div id="reader" style="width:100%;" class="scanner-active"></div>
+    <!-- SCANNER SECTION -->
+    <div id="scanner_section" style="display:none;">
+        <div class="card p-3">
+            <div id="reader-container"><div id="reader"></div></div>
             <div class="row mt-3 g-2">
-                <div class="col-md-4"><input type="text" id="in_serial" class="form-control" placeholder="Serial (Required)" readonly></div>
-                <div class="col-md-4"><input type="text" id="in_imei" class="form-control" placeholder="IMEI"></div>
-                <div class="col-md-4"><input type="text" id="in_mac" class="form-control" placeholder="MAC Address"></div>
+                <div class="col-md-4">
+                    <label class="small fw-bold text-primary">SERIAL (CAPTURED)</label>
+                    <input type="text" id="scan_serial" class="form-control active-scan-field" placeholder="Waiting for scan..." readonly>
+                </div>
+                <div class="col-md-4">
+                    <label class="small fw-bold">IMEI</label>
+                    <input type="text" id="scan_imei" class="form-control" placeholder="Optional" readonly>
+                </div>
+                <div class="col-md-4">
+                    <label class="small fw-bold">MAC</label>
+                    <input type="text" id="scan_mac" class="form-control" placeholder="Optional" readonly>
+                </div>
             </div>
+            <button id="btn_manual_save" class="btn btn-success btn-lg w-100 mt-3 fw-bold" onclick="saveData()" disabled>SAVE RECORD</button>
         </div>
     </div>
 
-    <!-- TABLE -->
-    <div class="card shadow-sm border-0 p-3">
-        <table class="table table-hover">
-            <thead>
-                <tr>
-                    <th>Asset</th>
-                    <th>Type / Dept</th>
-                    <th>Status</th>
-                    <th>Borrower / Due</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody id="log_body">
-                {% for scan in scans %}
-                <tr class="{% if scan.is_flagged %}overdue-row{% endif %}">
-                    <td>
-                        <div class="fw-bold">{{ scan.code }}</div>
-                        <small class="text-muted">ID: {{ scan.id }}</small>
-                    </td>
-                    <td>
-                        <div>{{ scan.device_type_other or scan.device_type }}</div>
-                        <small class="text-secondary">{{ scan.department_other or scan.department }}</small>
-                    </td>
-                    <td><span class="badge bg-light text-dark border">{{ scan.status }}</span></td>
-                    <td>
-                        {% if scan.status == 'Loan' %}
-                            <div class="small fw-bold">{{ scan.borrower_name }}</div>
-                            <div class="small {% if scan.is_flagged %}text-danger{% endif %}">{{ scan.expected_return_date }}</div>
-                        {% else %}-{% endif %}
-                    </td>
-                    <td><button class="btn btn-sm text-danger" onclick="deleteItem({{scan.id}})">🗑️</button></td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <!-- START SCREEN -->
+    <div id="start_section" class="text-center py-5">
+        <div class="card p-5">
+            <h3>Ready to Scan?</h3>
+            <button class="btn btn-primary btn-lg mt-3" data-bs-toggle="modal" data-bs-target="#setupModal">Start New Session</button>
+        </div>
     </div>
-</div>
 
-<!-- SETUP MODAL -->
-<div class="modal fade" id="setupModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-primary text-white"><h5>Session Initialization</h5></div>
-            <div class="modal-body">
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label fw-bold">Device Type *</label>
-                        <select id="s_type" class="form-select" onchange="toggleOther('s_type', 's_type_other')">
-                            <option value="Laptop">Laptop</option>
-                            <option value="Desktop">Desktop</option>
-                            <option value="iPhone">iPhone</option>
-                            <option value="Monitor">Monitor</option>
-                            <option value="Other">Other</option>
-                        </select>
-                        <input type="text" id="s_type_other" class="form-control mt-2" style="display:none;" placeholder="Specify type...">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-bold">Department *</label>
-                        <select id="s_dept" class="form-select" onchange="toggleOther('s_dept', 's_dept_other')">
-                            <option value="IT">IT</option>
-                            <option value="HR">HR</option>
-                            <option value="Finance">Finance</option>
-                            <option value="Other">Other</option>
-                        </select>
-                        <input type="text" id="s_dept_other" class="form-control mt-2" style="display:none;" placeholder="Specify department...">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-bold">Status *</label>
-                        <select id="s_status" class="form-select" onchange="toggleLoanFields()">
-                            <option value="In Stock">In Stock</option>
-                            <option value="In Use">In Use</option>
-                            <option value="Loan">Loan</option>
-                            <option value="Repair">Repair</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-bold">Scan Mode</label>
-                        <div class="btn-group w-100">
-                            <input type="radio" class="btn-check" name="mode" id="m1" value="single" checked>
-                            <label class="btn btn-outline-primary" for="m1">Single</label>
-                            <input type="radio" class="btn-check" name="mode" id="m2" value="bulk">
-                            <label class="btn btn-outline-primary" for="m2">Bulk</label>
-                        </div>
-                    </div>
-                </div>
-
-                <div id="loan_fields" class="mt-4 p-3 bg-light rounded" style="display:none;">
-                    <h6 class="border-bottom pb-2">Borrower Details</h6>
-                    <div class="row g-2">
-                        <div class="col-md-6"><input type="text" id="s_b_name" class="form-control" placeholder="Name"></div>
-                        <div class="col-md-6"><input type="email" id="s_b_email" class="form-control" placeholder="Email"></div>
-                        <div class="col-md-6"><label class="small">Start Date</label><input type="date" id="s_b_start" class="form-control"></div>
-                        <div class="col-md-6"><label class="small">Return Date</label><input type="date" id="s_b_end" class="form-control"></div>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer"><button class="btn btn-primary w-100" onclick="confirmSetup()">START SESSION</button></div>
+    <!-- LOG -->
+    <div class="card p-4">
+        <h5 class="mb-3">Live Activity Log</h5>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr><th>Time</th><th>Identifiers</th><th>Status</th><th>User</th><th>Action</th></tr>
+                </thead>
+                <tbody id="history_body">
+                    {% for scan in scans %}
+                    <tr id="row-{{ scan.id }}" class="{% if scan.is_flagged %}overdue-row{% endif %}">
+                        <td class="small text-muted">{{ scan.timestamp.strftime('%H:%M') }}</td>
+                        <td>
+                            <div class="fw-bold">{{ scan.code }}{% if scan.is_flagged %} 🚩{% endif %}</div>
+                            <div class="small text-muted">{% if scan.imei %}IMEI: {{ scan.imei }}{% endif %}</div>
+                        </td>
+                        <td><span class="badge rounded-pill bg-secondary status-badge">{{ scan.status }}</span></td>
+                        <td>{{ scan.person_name }}</td>
+                        <td><button class="btn btn-sm text-danger" onclick="deleteSingle({{ scan.id }})">🗑️</button></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
 
-<!-- BULK PROMPT MODAL -->
-<div class="modal fade" id="bulkModal" data-bs-backdrop="static" tabindex="-1">
+<!-- PROMPT MODAL -->
+<div class="modal fade" id="promptModal" data-bs-backdrop="static" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-body text-center p-4">
-                <div id="bulk_msg" class="h5 mb-4 text-success"></div>
-                <p>Do you want to continue bulk scanning?</p>
-                <div class="d-flex gap-2">
-                    <button class="btn btn-primary flex-fill" onclick="continueBulk()">YES (Next Device)</button>
-                    <button class="btn btn-danger flex-fill" onclick="location.reload()">NO (End Session)</button>
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title">Serial Captured</h5>
+            </div>
+            <div class="modal-body p-4 text-center">
+                <p class="mb-4">Would you like to scan optional identifiers for this device?</p>
+                <div class="d-grid gap-2">
+                    <button class="btn btn-primary py-2" onclick="setNextField('scan_imei')">Scan IMEI</button>
+                    <button class="btn btn-info py-2" onclick="setNextField('scan_mac')">Scan MAC Address</button>
+                    <hr>
+                    <button class="btn btn-success py-3 fw-bold" onclick="saveData()">No, Save & Continue</button>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- SETUP MODAL (Place your existing modal HTML here) -->
+<div class="modal fade" id="setupModal" data-bs-backdrop="static" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">Session Setup</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">User Name</label>
+                    <input type="text" id="m_user" class="form-control" placeholder="Enter user name">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Department</label>
+                    <select id="m_dept" class="form-select">
+                        <option value="IT">IT</option>
+                        <option value="ADMIN">ADMIN</option>
+                        <option value="Others">Others</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Scan Mode</label>
+                    <div class="btn-group w-100">
+                        <input type="radio" class="btn-check" name="mode" id="mode1" value="single" checked>
+                        <label class="btn btn-outline-primary" for="mode1">Single</label>
+                        <input type="radio" class="btn-check" name="mode" id="mode2" value="multiple">
+                        <label class="btn btn-outline-primary" for="mode2">Bulk</label>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Update Status</label>
+                    <div class="row g-2">
+                        <div class="col-6"><input type="radio" class="btn-check" name="status" id="st1" value="In Stock" checked><label class="btn btn-sm btn-outline-secondary w-100" for="st1">In Stock</label></div>
+                        <div class="col-6"><input type="radio" class="btn-check" name="status" id="st2" value="In Use"><label class="btn btn-sm btn-outline-secondary w-100" for="st2">In Use</label></div>
+                    </div>
+                </div>
+                <input type="hidden" id="m_device" value="Laptop">
+                <input type="hidden" id="m_email" value="">
+                <input type="hidden" id="m_date" value="">
+                <input type="hidden" id="m_notes" value="">
+            </div>
+            <div class="modal-footer border-0">
+                <button class="btn btn-primary w-100 py-3 fw-bold" onclick="confirmSetup()">CONFIRM & START</button>
             </div>
         </div>
     </div>
@@ -175,104 +175,155 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 let scanner;
-let activeField = 'in_serial';
+let activeFieldId = 'scan_serial';
 let session = {};
-let bulkCount = 0;
+let promptModal;
 
-function toggleOther(selId, otherId) {
-    document.getElementById(otherId).style.display = (document.getElementById(selId).value === 'Other') ? 'block' : 'none';
-}
+// Fix for Illegal Invocation: Initialize modal correctly
+document.addEventListener('DOMContentLoaded', () => {
+    const promptEl = document.getElementById('promptModal');
+    if (promptEl) promptModal = new bootstrap.Modal(promptEl);
+    
+    // Safety check for share-modal.js error
+    const shareBtn = document.getElementById('shareBtn');
+    if (shareBtn) {
+        shareBtn.addEventListener('click', () => console.log("Share clicked"));
+    }
+});
 
-function toggleLoanFields() {
-    document.getElementById('loan_fields').style.display = (document.getElementById('s_status').value === 'Loan') ? 'block' : 'none';
+function setNextField(id) {
+    if (promptModal) promptModal.hide();
+    activeFieldId = id;
+    document.querySelectorAll('#scanner_section input').forEach(i => i.classList.remove('active-scan-field'));
+    document.getElementById(id).classList.add('active-scan-field');
+    if (scanner) scanner.resume();
 }
 
 function confirmSetup() {
     session = {
-        type: document.getElementById('s_type').value,
-        type_other: document.getElementById('s_type_other').value,
-        dept: document.getElementById('s_dept').value,
-        dept_other: document.getElementById('s_dept_other').value,
-        status: document.getElementById('s_status').value,
+        user: document.getElementById('m_user').value || 'User',
+        dept: document.getElementById('m_dept').value,
         mode: document.querySelector('input[name="mode"]:checked').value,
-        b_name: document.getElementById('s_b_name').value,
-        b_email: document.getElementById('s_b_email').value,
-        b_start: document.getElementById('s_b_start').value,
-        b_end: document.getElementById('s_b_end').value
+        status: document.querySelector('input[name="status"]:checked').value,
+        device: document.getElementById('m_device').value,
+        email: document.getElementById('m_email').value,
+        date: document.getElementById('m_date').value,
+        notes: document.getElementById('m_notes').value
     };
 
-    bootstrap.Modal.getInstance(document.getElementById('setupModal')).hide();
-    startScanner();
-    updateUI();
+    const setupEl = document.getElementById('setupModal');
+    const setupInst = bootstrap.Modal.getInstance(setupEl) || new bootstrap.Modal(setupEl);
+    setupInst.hide();
+    startUI();
 }
 
-function updateUI() {
-    document.getElementById('session_bar').style.display = 'block';
-    document.getElementById('scanner_ui').style.display = 'block';
-    document.getElementById('label_mode').innerText = session.mode.toUpperCase();
-    document.getElementById('label_type').innerText = session.type;
-    document.getElementById('label_dept').innerText = session.dept;
-    document.getElementById('label_status').innerText = session.status;
-}
+function startUI() {
+    document.getElementById('start_section').style.display = 'none';
+    document.getElementById('session_info').style.display = 'block';
+    document.getElementById('scanner_section').style.display = 'block';
+    
+    document.getElementById('ui_user').innerText = session.user;
+    document.getElementById('ui_mode').innerText = session.mode.toUpperCase();
+    document.getElementById('ui_status').innerText = session.status;
 
-function startScanner() {
-    scanner = new Html5Qrcode("reader");
-    scanner.start({ facingMode: "environment" }, { fps: 20, qrbox: 250 }, (text) => {
-        document.getElementById(activeField).value = text;
-        
-        if (activeField === 'in_serial') {
-            // Sequential workflow
-            activeField = 'in_imei';
-            document.getElementById('in_imei').focus();
-        } else if (activeField === 'in_imei') {
-            activeField = 'in_mac';
-            document.getElementById('in_mac').focus();
-        } else {
-            saveData();
-        }
-    });
+    if (!scanner) {
+        scanner = new Html5Qrcode("reader");
+        scanner.start({ facingMode: "environment" }, { fps: 20, qrbox: 250 }, (text) => {
+            document.getElementById(activeFieldId).value = text;
+            if (navigator.vibrate) navigator.vibrate(50);
+
+            if (activeFieldId === 'scan_serial') {
+                scanner.pause();
+                document.getElementById('btn_manual_save').disabled = false;
+                if (promptModal) promptModal.show();
+            } else {
+                document.getElementById('btn_manual_save').classList.add('btn-pulse');
+            }
+        });
+    }
 }
 
 function saveData() {
+    if (promptModal) promptModal.hide();
+    const code = document.getElementById('scan_serial').value;
+    if (!code) return;
+
     const payload = {
-        code: document.getElementById('in_serial').value,
-        imei: document.getElementById('in_imei').value,
-        mac_address: document.getElementById('in_mac').value,
-        device_type: session.type, device_type_other: session.type_other,
-        department: session.dept, department_other: session.dept_other,
-        status: session.status,
-        borrower_name: session.b_name, borrower_email: session.b_email,
-        loan_start: session.b_start, loan_end: session.b_end
+        code: code,
+        imei: document.getElementById('scan_imei').value,
+        mac_address: document.getElementById('scan_mac').value,
+        person_name: session.user, department: session.dept,
+        device_type: session.device, status: session.status, 
+        email: session.email, return_date: session.date, notes: session.notes
     };
 
     fetch('/scanned', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
-    }).then(() => {
-        bulkCount++;
-        showFeedback();
-        if (session.mode === 'bulk') {
-            document.getElementById('bulk_msg').innerText = `Device ${bulkCount} Saved Successfully.`;
-            new bootstrap.Modal(document.getElementById('bulkModal')).show();
-        } else {
-            location.reload();
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            showToast();
+            addTableRow(payload, data);
+            
+            // Continuous workflow for bulk mode
+            if (session.mode === 'multiple') {
+                resetFields();
+            } else {
+                finishSession();
+            }
         }
-    });
+    })
+    .catch(err => alert("Save Error: " + err));
 }
 
-function continueBulk() {
-    bootstrap.Modal.getInstance(document.getElementById('bulkModal')).hide();
-    document.getElementById('in_serial').value = '';
-    document.getElementById('in_imei').value = '';
-    document.getElementById('in_mac').value = '';
-    activeField = 'in_serial';
+function resetFields() {
+    document.getElementById('scan_serial').value = '';
+    document.getElementById('scan_imei').value = '';
+    document.getElementById('scan_mac').value = '';
+    document.getElementById('btn_manual_save').disabled = true;
+    document.getElementById('btn_manual_save').classList.remove('btn-pulse');
+    setNextField('scan_serial');
 }
 
-function showFeedback() {
-    const t = document.getElementById('feedback_toast');
+function addTableRow(item, meta) {
+    const row = `
+        <tr id="row-${meta.id}" class="${meta.is_flagged ? 'overdue-row' : ''}">
+            <td class="small text-muted">${meta.time}</td>
+            <td>
+                <div class="fw-bold">${item.code} ${meta.is_flagged ? '🚩' : ''}</div>
+                <div class="small text-muted">${item.imei ? 'IMEI: '+item.imei : ''}</div>
+            </td>
+            <td><span class="badge rounded-pill bg-secondary status-badge">${item.status}</span></td>
+            <td>${item.person_name}</td>
+            <td><button class="btn btn-sm text-danger" onclick="deleteSingle(${meta.id})">🗑️</button></td>
+        </tr>`;
+    document.getElementById('history_body').insertAdjacentHTML('afterbegin', row);
+}
+
+function showToast() {
+    const t = document.getElementById('save_toast');
     t.style.display = 'block';
     setTimeout(() => t.style.display = 'none', 2000);
+}
+
+function finishSession() {
+    if (scanner) scanner.stop().finally(() => location.reload());
+    else location.reload();
+}
+
+function deleteSingle(id) {
+    if (!confirm("Delete?")) return;
+    fetch('/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [id] })
+    }).then(() => {
+        const row = document.getElementById(`row-${id}`);
+        if (row) row.remove();
+    });
 }
 </script>
 </body>
