@@ -24,7 +24,7 @@ class InventoryScan(db.Model):
     code = db.Column(db.String(100), nullable=False)
     imei = db.Column(db.String(100), nullable=True)
     mac_address = db.Column(db.String(100), nullable=True)
-    device_type = db.Column(db.String(50), nullable=False)
+    device_type = db.Column(db.String(100), nullable=False)
     department = db.Column(db.String(50), nullable=True)
     status = db.Column(db.String(50), nullable=False)
     person_name = db.Column(db.String(100), nullable=True)
@@ -35,17 +35,15 @@ class InventoryScan(db.Model):
     purchase_date = db.Column(db.Date, nullable=True)
     end_of_cycle = db.Column(db.Date, nullable=True)
     image_data = db.Column(db.Text, nullable=True) 
-    is_flagged = db.Column(db.Boolean, default=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
 def init_db():
     with app.app_context():
         try:
             db.create_all()
-            # Dynamic migration to ensure all columns exist for existing databases
             cols = {
                 "purchase_date": "DATE", "end_of_cycle": "DATE", 
-                "image_data": "TEXT", "device_type": "VARCHAR(50)",
+                "image_data": "TEXT", "device_type": "VARCHAR(100)",
                 "employee_id": "VARCHAR(50)", "notes": "TEXT",
                 "person_name": "VARCHAR(100)"
             }
