@@ -12,7 +12,7 @@ from sqlalchemy import text
 app = Flask(__name__)
 
 # --- CONFIGURATION ---
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'default-dev-key')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'change-this-in-hostinger-settings')
 DB_USER = os.environ.get('DB_USER')
 DB_PASS = os.environ.get('DB_PASS')
 DB_HOST = os.environ.get('DB_HOST')
@@ -27,7 +27,7 @@ login_manager.login_view = 'login'
 
 # --- MODELS ---
 class User(UserMixin, db.Model):
-    __tablename__ = 'user' # Explicit naming for reserved keyword handling
+    __tablename__ = 'user'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(100), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
@@ -55,12 +55,12 @@ class InventoryScan(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# --- DB INITIALIZATION ---
+# --- DB INITIALIZATION & MIGRATIONS ---
 def init_db():
     with app.app_context():
         try:
             db.create_all()
-            # Migration check: Ensure is_admin exists
+            # Force migration: Ensure is_admin column exists
             try:
                 db.session.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE'))
                 db.session.commit()
@@ -109,21 +109,17 @@ def index():
 @app.route('/admin/users', methods=['GET', 'POST'])
 @login_required
 def manage_users():
-    if not current_user.is_admin:
-        return redirect(url_for('index'))
+    if not current_user.is_admin: return redirect(url_for('index'))
     if request.method == 'POST':
         u = sanitize(request.form.get('username'))
         p = request.form.get('password')
         a = True if request.form.get('is_admin') else False
-        if User.query.filter_by(username=u).first():
-            flash("User already exists!")
+        if User.query.filter_by(username=u).first(): flash("User exists!")
         else:
-            new_user = User(username=u, password=generate_password_hash(p), is_admin=a)
-            db.session.add(new_user)
+            db.session.add(User(username=u, password=generate_password_hash(p), is_admin=a))
             db.session.commit()
-            flash("User created successfully.")
-    users = User.query.all()
-    return render_template('admin_users.html', users=users)
+            flash("User created.")
+    return render_template('admin_users.html', users=User.query.all())
 
 @app.route('/admin/users/delete/<int:user_id>')
 @login_required
@@ -133,7 +129,6 @@ def delete_user(user_id):
     if u and u.id != current_user.id:
         db.session.delete(u)
         db.session.commit()
-        flash("User deleted.")
     return redirect(url_for('manage_users'))
 
 @app.route('/scanned', methods=['POST'])
@@ -171,10 +166,8 @@ def scanned():
 @app.route('/delete', methods=['POST'])
 @login_required
 def delete_scans():
-    # BACKEND PROTECTION: Only admins can delete
     if not current_user.is_admin:
-        return jsonify({"status": "error", "message": "Admin privileges required"}), 403
-        
+        return jsonify({"status": "error", "message": "Admin only"}), 403
     ids = request.json.get('ids', [])
     InventoryScan.query.filter(InventoryScan.id.in_(ids)).delete(synchronize_session=False)
     db.session.commit()
