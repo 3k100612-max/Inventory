@@ -1,25 +1,25 @@
+import os
+import sys
+import re
+import html
+from datetime import datetime
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy import text
-from datetime import datetime
-import os
-import sys
-import re
-import html
 
 app = Flask(__name__)
 
-# SECURITY: Fetch the Secret Key from Hostinger environment variables
-# If not found, it uses a placeholder (only for local dev, never production)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key-replace-in-hostinger')
+# --- SECURITY CONFIGURATION ---
+# Fetches secrets from Hostinger Environment Settings
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key-change-me')
 
-# Database Configuration via Environment Variables
-DB_USER = os.environ.get('DB_USER', 'postgres')
-DB_PASS = os.environ.get('DB_PASS', 'P12345')
-DB_HOST = os.environ.get('DB_HOST', 'localhost')
-DB_NAME = os.environ.get('DB_NAME', 'inventory')
+# PostgreSQL Connection
+DB_USER = os.environ.get('DB_USER')
+DB_PASS = os.environ.get('DB_PASS')
+DB_HOST = os.environ.get('DB_HOST')
+DB_NAME = os.environ.get('DB_NAME')
 
 app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -28,11 +28,12 @@ db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-# --- MODELS ---
+# --- DATABASE MODELS ---
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(100), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
+    is_admin = db.Column(db.Boolean, default=False)
 
 class InventoryScan(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -56,14 +57,22 @@ class InventoryScan(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+# --- DB INITIALIZATION & MIGRATION ---
 def init_db():
     with app.app_context():
         try:
             db.create_all()
-            # Ensure admin user exists (Default: admin / P12345)
+            # Ensure is_admin column exists (Migration helper)
+            try:
+                db.session.execute(text("ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE"))
+                db.session.commit()
+            except Exception: db.session.rollback()
+
+            # Create default admin if not exists (admin / P12345)
             if not User.query.filter_by(username='admin').first():
-                hashed_pw = generate_password_hash('P12345', method='pbkdf2:sha256')
-                admin = User(username='admin', password=hashed_pw)
+                admin = User(username='admin', 
+                             password=generate_password_hash('P12345'), 
+                             is_admin=True)
                 db.session.add(admin)
                 db.session.commit()
         except Exception as e:
@@ -71,24 +80,22 @@ def init_db():
 
 init_db()
 
-# --- SECURITY HELPERS ---
+# --- HELPERS ---
 def sanitize(val, length=100):
     if not val: return None
     return html.escape(str(val).strip()[:length])
 
 def is_valid_email(email):
     if not email: return True
-    regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(regex, email) is not None
+    return re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email) is not None
 
-# --- ROUTES ---
+# --- AUTH ROUTES ---
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = sanitize(request.form.get('username'))
         password = request.form.get('password')
         user = User.query.filter_by(username=username).first()
-        
         if user and check_password_hash(user.password, password):
             login_user(user)
             return redirect(url_for('index'))
@@ -101,24 +108,51 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
+# --- ADMIN ROUTES ---
+@app.route('/admin/users', methods=['GET', 'POST'])
+@login_required
+def manage_users():
+    if not current_user.is_admin:
+        return redirect(url_for('index'))
+    if request.method == 'POST':
+        u = sanitize(request.form.get('username'))
+        p = request.form.get('password')
+        a = True if request.form.get('is_admin') else False
+        if User.query.filter_by(username=u).first():
+            flash("User exists!")
+        else:
+            db.session.add(User(username=u, password=generate_password_hash(p), is_admin=a))
+            db.session.commit()
+            flash("User created!")
+    return render_template('admin_users.html', users=User.query.all())
+
+@app.route('/admin/users/delete/<int:user_id>')
+@login_required
+def delete_user(user_id):
+    if not current_user.is_admin: return redirect(url_for('index'))
+    u = User.query.get(user_id)
+    if u and u.id != current_user.id:
+        db.session.delete(u)
+        db.session.commit()
+    return redirect(url_for('manage_users'))
+
+# --- APP ROUTES ---
 @app.route('/')
 @login_required
 def index():
-    recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(100).all()
-    return render_template('index.html', scans=recent_scans, user=current_user)
+    scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(100).all()
+    return render_template('index.html', scans=scans, user=current_user)
 
 @app.route('/scanned', methods=['POST'])
 @login_required
 def scanned():
     data = request.get_json()
     email = sanitize(data.get("email"), 120)
-    
     if email and not is_valid_email(email):
         return jsonify({"status": "error", "message": "Invalid email"}), 400
 
     def parse_dt(s):
-        if not s or not s.strip(): return None
-        try: return datetime.strptime(s, '%Y-%m-%d').date()
+        try: return datetime.strptime(s, '%Y-%m-%d').date() if s else None
         except: return None
 
     try:
@@ -127,15 +161,15 @@ def scanned():
             imei=sanitize(data.get("imei")),
             mac_address=sanitize(data.get("mac_address")),
             device_type=sanitize(data.get("device_type")),
-            department=sanitize(data.get("department")),
+            department=sanitize(data.get("dept")),
             status=sanitize(data.get("status")),
-            person_name=sanitize(data.get("person_name")),
-            employee_id=sanitize(data.get("employee_id"), 50),
+            person_name=sanitize(data.get("user")),
+            employee_id=sanitize(data.get("empId"), 50),
             email=email,
-            return_date=parse_dt(data.get("return_date")),
+            return_date=parse_dt(data.get("date")),
             notes=sanitize(data.get("notes"), 1000),
-            purchase_date=parse_dt(data.get("purchase_date")),
-            end_of_cycle=parse_dt(data.get("end_of_cycle")),
+            purchase_date=parse_dt(data.get("purchase")),
+            end_of_cycle=parse_dt(data.get("end")),
             image_data=data.get("image_data")
         )
         db.session.add(new_scan)
@@ -143,20 +177,15 @@ def scanned():
         return jsonify({"status": "success", "id": new_scan.id, "time": new_scan.timestamp.strftime('%H:%M')})
     except Exception as e:
         db.session.rollback()
-        return jsonify({"status": "error", "message": "Database Error"}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/delete', methods=['POST'])
 @login_required
 def delete_scans():
-    data = request.json
-    ids = data.get('ids', [])
-    try:
-        InventoryScan.query.filter(InventoryScan.id.in_(ids)).delete(synchronize_session=False)
-        db.session.commit()
-        return jsonify({"status": "success"})
-    except Exception:
-        db.session.rollback()
-        return jsonify({"status": "error"}), 500
+    ids = request.json.get('ids', [])
+    InventoryScan.query.filter(InventoryScan.id.in_(ids)).delete(synchronize_session=False)
+    db.session.commit()
+    return jsonify({"status": "success"})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8506)
