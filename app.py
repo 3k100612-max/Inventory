@@ -7,8 +7,8 @@ import sys
 
 app = Flask(__name__)
 
-# Database Configuration
-# NOTE: If running locally, ensure DB_HOST is 'localhost' or your local IP
+# --- Database Configuration ---
+# If running locally, you may need to change DB_HOST to 'localhost'
 DB_USER = os.environ.get('DB_USER', 'postgres')
 DB_PASS = os.environ.get('DB_PASS', 'P12345')
 DB_HOST = os.environ.get('DB_HOST', 'inventory-inventory-sqaoox')
@@ -36,27 +36,27 @@ class InventoryScan(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
 def init_db():
-    """Initializes the database. Ensures tables and columns exist."""
+    """Initializes the database. Ensures tables and columns exist on startup."""
     with app.app_context():
         try:
             db.create_all()
-            # List of columns to check/add for incremental updates
             cols = ["imei", "mac_address", "device_type", "department", "person_name", "email", "return_date", "is_flagged", "timestamp"]
             for col in cols:
                 try:
+                    # PostgreSQL specific: ADD COLUMN IF NOT EXISTS
                     db.session.execute(text(f"ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS {col} VARCHAR"))
                     db.session.commit()
                 except Exception:
                     db.session.rollback()
-            print("Database initialization successful.")
+            print("Database initialization completed.")
         except Exception as e:
-            print(f"Database connection failed: {e}", file=sys.stderr)
+            print(f"Critical DB Init Error: {e}", file=sys.stderr)
 
-# Call init_db here so it runs on every startup (Gunicorn, Flask Run, etc.)
+# Run initialization immediately so it works on Gunicorn/Production
 init_db()
 
 def run_global_maintenance():
-    """Flags overdue items."""
+    """Scans for overdue items safely."""
     try:
         today = datetime.now().date()
         InventoryScan.query.filter(
@@ -67,7 +67,7 @@ def run_global_maintenance():
         db.session.commit()
     except Exception as e:
         db.session.rollback()
-        print(f"Maintenance failed: {e}", file=sys.stderr)
+        print(f"Maintenance Error: {e}", file=sys.stderr)
 
 @app.route('/')
 def index():
@@ -76,27 +76,26 @@ def index():
         recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(100).all()
         return render_template('index.html', scans=recent_scans)
     except Exception as e:
-        # Prevents a total crash if the DB is unreachable
-        return f"Database connectivity error: {str(e)}", 500
+        return f"Database Error: {str(e)}", 500
 
 @app.route('/scanned', methods=['POST'])
 def scanned():
     data = request.json
     if not data or not data.get("code"):
         return jsonify({"status": "error", "message": "Missing Serial Number"}), 400
-
+    
     r_date_str = data.get("return_date")
     r_date = None
     if r_date_str and r_date_str.strip():
         try:
             r_date = datetime.strptime(r_date_str, '%Y-%m-%d').date()
-        except: pass
+        except: r_date = None
     
     try:
         code = data.get("code")
         status = data.get("status")
         
-        # Logic for flagging
+        # Flagging logic
         repair_count = InventoryScan.query.filter_by(code=code, status='Repair').count()
         flag_it = False
         if status == 'Repair' and repair_count >= 2:
@@ -128,12 +127,13 @@ def scanned():
 def delete_scans():
     data = request.json
     ids = data.get('ids', [])
-    if not ids:
+    if not ids or not isinstance(ids, list):
         return jsonify({"status": "error", "message": "No items selected"}), 400
     try:
+        # Efficient bulk delete
         InventoryScan.query.filter(InventoryScan.id.in_(ids)).delete(synchronize_session=False)
         db.session.commit()
-        return jsonify({"status": "success"})
+        return jsonify({"status": "success", "deleted_count": len(ids)})
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
