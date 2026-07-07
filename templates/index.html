@@ -11,12 +11,10 @@
         .card { border: none; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); margin-bottom: 20px; }
         #reader-container { position: relative; width: 100%; border-radius: 15px; overflow: hidden; background: #222; min-height: 300px; }
         .session-info-bar { display: none; background: #fff; border-left: 6px solid #0d6efd; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
-        .overdue-row { background-color: #fff5f5 !important; border-left: 4px solid #dc3545; }
         .active-scan-field { border: 3px solid #0d6efd !important; background-color: #e7f1ff !important; }
         .status-badge { font-size: 0.7rem; text-transform: uppercase; font-weight: bold; }
         #save_toast { position: fixed; top: 20px; right: 20px; z-index: 9999; display: none; }
-        .btn-pulse { animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
+        .mandatory-label::after { content: " *"; color: red; }
     </style>
 </head>
 <body>
@@ -29,7 +27,6 @@
         <button class="btn btn-outline-secondary btn-sm" onclick="location.reload()">🔄 Sync All</button>
     </div>
 
-    <!-- SESSION INFO -->
     <div id="session_info" class="session-info-bar card shadow-sm">
         <div class="row align-items-center">
             <div class="col-md-8">
@@ -46,14 +43,13 @@
         </div>
     </div>
 
-    <!-- SCANNER SECTION -->
     <div id="scanner_section" style="display:none;">
         <div class="card p-3">
             <div id="reader-container"><div id="reader"></div></div>
             <div class="row mt-3 g-2">
                 <div class="col-md-4">
                     <label class="small fw-bold text-primary">SERIAL (CAPTURED)</label>
-                    <input type="text" id="scan_serial" class="form-control active-scan-field" placeholder="Waiting for scan..." readonly>
+                    <input type="text" id="scan_serial" class="form-control active-scan-field" placeholder="Waiting..." readonly>
                 </div>
                 <div class="col-md-4">
                     <label class="small fw-bold">IMEI</label>
@@ -68,7 +64,6 @@
         </div>
     </div>
 
-    <!-- START SCREEN -->
     <div id="start_section" class="text-center py-5">
         <div class="card p-5">
             <h3>Ready to Scan?</h3>
@@ -76,7 +71,6 @@
         </div>
     </div>
 
-    <!-- LOG -->
     <div class="card p-4">
         <h5 class="mb-3">Live Activity Log</h5>
         <div class="table-responsive">
@@ -86,39 +80,16 @@
                 </thead>
                 <tbody id="history_body">
                     {% for scan in scans %}
-                    <tr id="row-{{ scan.id }}" class="{% if scan.is_flagged %}overdue-row{% endif %}">
+                    <tr id="row-{{ scan.id }}">
                         <td class="small text-muted">{{ scan.timestamp.strftime('%H:%M') }}</td>
-                        <td>
-                            <div class="fw-bold">{{ scan.code }}{% if scan.is_flagged %} 🚩{% endif %}</div>
-                            <div class="small text-muted">{% if scan.imei %}IMEI: {{ scan.imei }}{% endif %}</div>
-                        </td>
+                        <td><div class="fw-bold">{{ scan.code }}</div><div class="small text-muted">{{ scan.device_type }}</div></td>
                         <td><span class="badge rounded-pill bg-secondary status-badge">{{ scan.status }}</span></td>
-                        <td>{{ scan.person_name }}</td>
+                        <td>{{ scan.person_name or 'System' }}</td>
                         <td><button class="btn btn-sm text-danger" onclick="deleteSingle({{ scan.id }})">🗑️</button></td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
-        </div>
-    </div>
-</div>
-
-<!-- PROMPT MODAL -->
-<div class="modal fade" id="promptModal" data-bs-backdrop="static" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg">
-            <div class="modal-header bg-dark text-white">
-                <h5 class="modal-title">Serial Captured</h5>
-            </div>
-            <div class="modal-body p-4 text-center">
-                <p class="mb-4">Would you like to scan optional identifiers for this device?</p>
-                <div class="d-grid gap-2">
-                    <button class="btn btn-primary py-2" onclick="setNextField('scan_imei')">Scan IMEI</button>
-                    <button class="btn btn-info py-2" onclick="setNextField('scan_mac')">Scan MAC Address</button>
-                    <hr>
-                    <button class="btn btn-success py-3 fw-bold" onclick="saveData()">No, Save & Continue</button>
-                </div>
-            </div>
         </div>
     </div>
 </div>
@@ -134,13 +105,15 @@
             <div class="modal-body p-4">
                 <div class="row">
                     <div class="col-md-6 mb-3">
-                        <label class="form-label fw-bold">Device Type *</label>
-                        <select id="m_device" class="form-select border-primary">
-                            <option value="">-- Select Type --</option>
+                        <label class="form-label fw-bold mandatory-label">Device Type</label>
+                        <select id="m_device" class="form-select border-primary" onchange="toggleUI()">
+                            <option value="">-- Select --</option>
                             <option value="Laptop">Laptop</option>
                             <option value="Mobile">Mobile</option>
-                            <option value="Tablet">Tablet</option>
-                            <option value="Peripherals">Peripherals</option>
+                            <option value="Monitor">Monitor</option>
+                            <option value="Docking">Docking</option>
+                            <option value="Printer">Printer</option>
+                            <option value="Other">Other</option>
                         </select>
                     </div>
                     <div class="col-md-6 mb-3">
@@ -157,67 +130,89 @@
                 <div class="mb-3">
                     <label class="form-label fw-bold">Update Status</label>
                     <div class="row g-2">
-                        <div class="col-4"><input type="radio" class="btn-check" name="status" id="st1" value="In Stock" checked><label class="btn btn-sm btn-outline-secondary w-100" for="st1">In Stock</label></div>
-                        <div class="col-4"><input type="radio" class="btn-check" name="status" id="st2" value="Loaned"><label class="btn btn-sm btn-outline-secondary w-100" for="st2">Loaned</label></div>
-                        <div class="col-4"><input type="radio" class="btn-check" name="status" id="st3" value="Repair"><label class="btn btn-sm btn-outline-secondary w-100" for="st3">Repair</label></div>
-                        <div class="col-4"><input type="radio" class="btn-check" name="status" id="st4" value="In Use"><label class="btn btn-sm btn-outline-secondary w-100" for="st4">In Use</label></div>
-                        <div class="col-4"><input type="radio" class="btn-check" name="status" id="st5" value="Retired"><label class="btn btn-sm btn-outline-secondary w-100" for="st5">Retired</label></div>
+                        <div class="col-4"><input type="radio" class="btn-check" name="status" id="st1" value="In Stock" checked onchange="toggleUI()"><label class="btn btn-sm btn-outline-secondary w-100" for="st1">In Stock</label></div>
+                        <div class="col-4"><input type="radio" class="btn-check" name="status" id="st2" value="Loaned" onchange="toggleUI()"><label class="btn btn-sm btn-outline-secondary w-100" for="st2">Loaned</label></div>
+                        <div class="col-4"><input type="radio" class="btn-check" name="status" id="st3" value="Repair" onchange="toggleUI()"><label class="btn btn-sm btn-outline-secondary w-100" for="st3">Repair</label></div>
+                        <div class="col-4"><input type="radio" class="btn-check" name="status" id="st4" value="In Use" onchange="toggleUI()"><label class="btn btn-sm btn-outline-secondary w-100" for="st4">In Use</label></div>
+                        <div class="col-4"><input type="radio" class="btn-check" name="status" id="st5" value="Retired" onchange="toggleUI()"><label class="btn btn-sm btn-outline-secondary w-100" for="st5">Retired</label></div>
                     </div>
                 </div>
 
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Department</label>
-                    <select id="m_dept" class="form-select">
-                        <option value="IT">IT</option>
-                        <option value="ADMIN">ADMIN</option>
-                        <option value="Others">Others</option>
-                    </select>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Department</label>
+                        <select id="m_dept" class="form-select" onchange="toggleUI()">
+                            <option value="IT">IT</option>
+                            <option value="FINANCE">FINANCE</option>
+                            <option value="PROCUREMENT">PROCUREMENT</option>
+                            <option value="OPERATION">OPERATION</option>
+                            <option value="FACILITIES">FACILITIES</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6 mb-3" id="group_other_dept" style="display:none;">
+                        <label class="form-label fw-bold mandatory-label">Specify Dept</label>
+                        <input type="text" id="m_other_dept" class="form-control">
+                    </div>
                 </div>
 
                 <hr>
 
                 <div id="dynamic_fields">
-                    <div class="mb-3" id="field_name" style="display:none;">
-                        <label class="form-label fw-bold">Person Name *</label>
-                        <input type="text" id="m_user" class="form-control" placeholder="Required">
+                    <!-- User Info Section (Mandatory for In Use, Loaned, Repair) -->
+                    <div class="row" id="group_user_info" style="display:none;">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold mandatory-label">Person Name</label>
+                            <input type="text" id="m_user" class="form-control">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold mandatory-label">Employee ID</label>
+                            <input type="text" id="m_emp_id" class="form-control">
+                        </div>
                     </div>
 
+                    <!-- Loan Specific -->
                     <div id="group_loan" style="display:none;">
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">Email *</label>
-                            <input type="email" id="m_email" class="form-control" placeholder="Required">
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">Return Date *</label>
-                            <input type="date" id="m_date" class="form-control">
-                        </div>
+                        <div class="mb-3"><label class="form-label fw-bold mandatory-label">Email</label><input type="email" id="m_email" class="form-control"></div>
+                        <div class="mb-3"><label class="form-label fw-bold mandatory-label">Return Date</label><input type="date" id="m_date" class="form-control"></div>
                     </div>
 
-                    <div id="group_repair" style="display:none;">
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">Issue Notes *</label>
-                            <textarea id="m_notes" class="form-control" rows="2" placeholder="Required"></textarea>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">Photo of Issue *</label>
-                            <input type="file" id="m_image" class="form-control" accept="image/*">
-                        </div>
+                    <!-- Stock Specific -->
+                    <div id="group_stock" class="row" style="display:none;">
+                        <div class="col-6 mb-3"><label class="form-label fw-bold mandatory-label">Purchase Date</label><input type="date" id="m_purchase" class="form-control"></div>
+                        <div class="col-6 mb-3"><label class="form-label fw-bold mandatory-label">End of Cycle</label><input type="date" id="m_end" class="form-control"></div>
                     </div>
 
-                    <div id="group_stock" class="row">
-                        <div class="col-6 mb-3">
-                            <label class="form-label fw-bold">Purchase Date</label>
-                            <input type="date" id="m_purchase" class="form-control">
-                        </div>
-                        <div class="col-6 mb-3">
-                            <label class="form-label fw-bold">End of Cycle</label>
-                            <input type="date" id="m_end" class="form-control">
-                        </div>
+                    <!-- Notes & Photo (Conditional Mandatory) -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold" id="label_notes">Notes (Optional)</label>
+                        <textarea id="m_notes" class="form-control" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold" id="label_photo">Photo (Optional)</label>
+                        <input type="file" id="m_image" class="form-control" accept="image/*">
                     </div>
                 </div>
             </div>
             <div class="modal-footer border-0">
                 <button class="btn btn-primary w-100 py-3 fw-bold" onclick="confirmSetup()">CONFIRM & START</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- PROMPT MODAL -->
+<div class="modal fade" id="promptModal" data-bs-backdrop="static" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-dark text-white"><h5 class="modal-title">Serial Captured</h5></div>
+            <div class="modal-body p-4 text-center">
+                <p class="mb-4">Scan optional identifiers?</p>
+                <div class="d-grid gap-2">
+                    <button class="btn btn-primary py-2" onclick="setNextField('scan_imei')">Scan IMEI</button>
+                    <button class="btn btn-info py-2" onclick="setNextField('scan_mac')">Scan MAC Address</button>
+                    <hr><button class="btn btn-success py-3 fw-bold" onclick="saveData()">No, Save & Continue</button>
+                </div>
             </div>
         </div>
     </div>
@@ -231,80 +226,87 @@ let session = {};
 let promptModal;
 
 document.addEventListener('DOMContentLoaded', () => {
-    const promptEl = document.getElementById('promptModal');
-    if (promptEl) promptModal = new bootstrap.Modal(promptEl);
-
-    // Initial status visibility check
-    updateFieldVisibility('In Stock');
+    promptModal = new bootstrap.Modal(document.getElementById('promptModal'));
+    toggleUI();
 });
 
-// Handle Dynamic Field Visibility
-document.querySelectorAll('input[name="status"]').forEach(radio => {
-    radio.addEventListener('change', (e) => updateFieldVisibility(e.target.value));
-});
+function toggleUI() {
+    const status = document.querySelector('input[name="status"]:checked').value;
+    const device = document.getElementById('m_device').value;
+    const dept = document.getElementById('m_dept').value;
 
-function updateFieldVisibility(status) {
-    document.getElementById('field_name').style.display = (status === 'Loaned' || status === 'Repair') ? 'block' : 'none';
+    // Reset visibility
+    document.getElementById('group_other_dept').style.display = (dept === 'Other') ? 'block' : 'none';
+    document.getElementById('group_user_info').style.display = (status === 'In Use' || status === 'Loaned' || status === 'Repair') ? 'flex' : 'none';
     document.getElementById('group_loan').style.display = (status === 'Loaned') ? 'block' : 'none';
-    document.getElementById('group_repair').style.display = (status === 'Repair') ? 'block' : 'none';
     document.getElementById('group_stock').style.display = (status === 'In Stock') ? 'flex' : 'none';
+
+    // Reset Labels to Optional
+    document.getElementById('label_notes').className = "form-label fw-bold";
+    document.getElementById('label_photo').className = "form-label fw-bold";
+    document.getElementById('label_notes').innerText = "Notes (Optional)";
+    document.getElementById('label_photo').innerText = "Photo (Optional)";
+
+    // Apply specific mandatory logic for Notes/Photo
+    if (status === 'Retired') {
+        document.getElementById('label_notes').innerText = "Reason for Retirement *";
+        document.getElementById('label_photo').innerText = "Serial Number Picture *";
+        document.getElementById('label_notes').className += " mandatory-label";
+        document.getElementById('label_photo').className += " mandatory-label";
+    } else if (status === 'Repair') {
+        document.getElementById('label_notes').innerText = "Issue Description *";
+        document.getElementById('label_notes').className += " mandatory-label";
+    }
+
+    if (device === 'Other') {
+        document.getElementById('label_notes').innerText = "Device Description *";
+        document.getElementById('label_notes').className += " mandatory-label";
+        document.getElementById('label_photo').className += " mandatory-label";
+    }
 }
 
-function setNextField(id) {
-    if (promptModal) promptModal.hide();
-    activeFieldId = id;
-    document.querySelectorAll('#scanner_section input').forEach(i => i.classList.remove('active-scan-field'));
-    document.getElementById(id).classList.add('active-scan-field');
-    if (scanner) scanner.resume();
-}
-
-const toBase64 = file => new Promise((resolve, reject) => {
-    if (!file) return resolve(null);
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = error => reject(error);
+const toBase64 = f => new Promise((res, rej) => {
+    if (!f) return res(null);
+    const r = new FileReader();
+    r.readAsDataURL(f);
+    r.onload = () => res(r.result);
+    r.onerror = e => rej(e);
 });
 
 async function confirmSetup() {
     const status = document.querySelector('input[name="status"]:checked').value;
     const device = document.getElementById('m_device').value;
     const user = document.getElementById('m_user').value;
+    const empId = document.getElementById('m_emp_id').value;
     const email = document.getElementById('m_email').value;
     const date = document.getElementById('m_date').value;
+    const purchase = document.getElementById('m_purchase').value;
+    const end = document.getElementById('m_end').value;
     const notes = document.getElementById('m_notes').value;
     const imgFile = document.getElementById('m_image').files[0];
+    let dept = document.getElementById('m_dept').value;
 
-    // Mandatory Checks
     if (!device) return alert("Device Type is mandatory.");
-    
-    if (status === 'Loaned') {
-        if (!user || !email || !date) return alert("Name, Email, and Return Date are mandatory for Loans.");
+    if (dept === 'Other') {
+        dept = document.getElementById('m_other_dept').value;
+        if (!dept) return alert("Specify department.");
     }
-    
-    let base64Image = null;
-    if (status === 'Repair') {
-        if (!user || !notes || !imgFile) return alert("Name, Notes, and Photo are mandatory for Repairs.");
-        base64Image = await toBase64(imgFile);
-    }
+
+    // Validation Rules
+    if (status === 'In Stock' && (!purchase || !end)) return alert("Purchase Date and End of Cycle are mandatory.");
+    if ((status === 'In Use' || status === 'Loaned' || status === 'Repair') && (!user || !empId)) return alert("Person Name and Employee ID are mandatory.");
+    if (status === 'Loaned' && (!email || !date)) return alert("Email and Return Date are mandatory.");
+    if (status === 'Retired' && (!notes || !imgFile)) return alert("Reason and Serial Picture are mandatory.");
+    if (status === 'Repair' && !notes) return alert("Issue Description is mandatory.");
+    if (device === 'Other' && (!notes || !imgFile)) return alert("Notes and Picture are mandatory for 'Other' device type.");
 
     session = {
-        user: user || 'System',
-        dept: document.getElementById('m_dept').value,
+        user, dept, status, device, empId, email, date, notes, purchase, end,
         mode: document.querySelector('input[name="mode"]:checked').value,
-        status: status,
-        device: device,
-        email: email,
-        date: date,
-        notes: notes,
-        purchase_date: document.getElementById('m_purchase').value,
-        end_of_cycle: document.getElementById('m_end').value,
-        image_data: base64Image
+        image_data: await toBase64(imgFile)
     };
 
-    const setupEl = document.getElementById('setupModal');
-    const setupInst = bootstrap.Modal.getInstance(setupEl);
-    setupInst.hide();
+    bootstrap.Modal.getInstance(document.getElementById('setupModal')).hide();
     startUI();
 }
 
@@ -312,67 +314,45 @@ function startUI() {
     document.getElementById('start_section').style.display = 'none';
     document.getElementById('session_info').style.display = 'block';
     document.getElementById('scanner_section').style.display = 'block';
-    
-    document.getElementById('ui_user').innerText = session.user;
+    document.getElementById('ui_user').innerText = session.user || 'System';
     document.getElementById('ui_mode').innerText = session.mode.toUpperCase();
     document.getElementById('ui_status').innerText = session.status;
     document.getElementById('ui_dept').innerText = session.dept;
 
     if (!scanner) {
         scanner = new Html5Qrcode("reader");
-        scanner.start({ facingMode: "environment" }, { fps: 20, qrbox: 250 }, (text) => {
+        // SENSITIVE SETTINGS: 30 FPS for fast detection
+        scanner.start({ facingMode: "environment" }, { fps: 30, qrbox: 250 }, (text) => {
             document.getElementById(activeFieldId).value = text;
-            if (navigator.vibrate) navigator.vibrate(50);
-
             if (activeFieldId === 'scan_serial') {
                 scanner.pause();
                 document.getElementById('btn_manual_save').disabled = false;
-                if (promptModal) promptModal.show();
-            } else {
-                document.getElementById('btn_manual_save').classList.add('btn-pulse');
+                promptModal.show();
             }
         });
     }
 }
 
 function saveData() {
-    if (promptModal) promptModal.hide();
+    promptModal.hide();
     const code = document.getElementById('scan_serial').value;
-    if (!code) return;
-
     const payload = {
-        code: code,
+        code, status: session.status, device_type: session.device, department: session.dept,
+        person_name: session.user, employee_id: session.empId, email: session.email,
+        return_date: session.date, notes: session.notes, purchase_date: session.purchase,
+        end_of_cycle: session.end, image_data: session.image_data,
         imei: document.getElementById('scan_imei').value,
-        mac_address: document.getElementById('scan_mac').value,
-        device_type: session.device,
-        department: session.dept,
-        status: session.status,
-        person_name: session.user,
-        email: session.email,
-        return_date: session.date,
-        notes: session.notes,
-        purchase_date: session.purchase_date,
-        end_of_cycle: session.end_of_cycle,
-        image_data: session.image_data
+        mac_address: document.getElementById('scan_mac').value
     };
 
-    fetch('/scanned', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.status === 'success') {
-            showToast();
-            addTableRow(payload, data);
-            if (session.mode === 'multiple') resetFields();
-            else finishSession();
-        } else {
-            alert("Error: " + data.message);
+    fetch('/scanned', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    .then(r => r.json()).then(d => {
+        if (d.status === 'success') {
+            document.getElementById('save_toast').style.display = 'block';
+            setTimeout(() => document.getElementById('save_toast').style.display = 'none', 2000);
+            if (session.mode === 'multiple') resetFields(); else finishSession();
         }
-    })
-    .catch(err => alert("Save Error: " + err));
+    });
 }
 
 function resetFields() {
@@ -380,47 +360,19 @@ function resetFields() {
     document.getElementById('scan_imei').value = '';
     document.getElementById('scan_mac').value = '';
     document.getElementById('btn_manual_save').disabled = true;
-    document.getElementById('btn_manual_save').classList.remove('btn-pulse');
     setNextField('scan_serial');
 }
 
-function addTableRow(item, meta) {
-    const row = `
-        <tr id="row-${meta.id}" class="${meta.is_flagged ? 'overdue-row' : ''}">
-            <td class="small text-muted">${meta.time}</td>
-            <td>
-                <div class="fw-bold">${item.code} ${meta.is_flagged ? '🚩' : ''}</div>
-                <div class="small text-muted">${item.imei ? 'IMEI: '+item.imei : ''}</div>
-            </td>
-            <td><span class="badge rounded-pill bg-secondary status-badge">${item.status}</span></td>
-            <td>${item.person_name}</td>
-            <td><button class="btn btn-sm text-danger" onclick="deleteSingle(${meta.id})">🗑️</button></td>
-        </tr>`;
-    document.getElementById('history_body').insertAdjacentHTML('afterbegin', row);
+function setNextField(id) {
+    promptModal.hide();
+    activeFieldId = id;
+    document.querySelectorAll('#scanner_section input').forEach(i => i.classList.remove('active-scan-field'));
+    document.getElementById(id).classList.add('active-scan-field');
+    if (scanner) scanner.resume();
 }
 
-function showToast() {
-    const t = document.getElementById('save_toast');
-    t.style.display = 'block';
-    setTimeout(() => t.style.display = 'none', 2000);
-}
-
-function finishSession() {
-    if (scanner) scanner.stop().finally(() => location.reload());
-    else location.reload();
-}
-
-function deleteSingle(id) {
-    if (!confirm("Delete?")) return;
-    fetch('/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: [id] })
-    }).then(() => {
-        const row = document.getElementById(`row-${id}`);
-        if (row) row.remove();
-    });
-}
+function finishSession() { if (scanner) scanner.stop().finally(() => location.reload()); else location.reload(); }
+function deleteSingle(id) { if (confirm("Delete?")) fetch('/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [id] }) }).then(() => location.reload()); }
 </script>
 </body>
 </html>
