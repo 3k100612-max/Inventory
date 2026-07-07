@@ -123,19 +123,48 @@
     </div>
 </div>
 
-<!-- SETUP MODAL (Place your existing modal HTML here) -->
+<!-- SETUP MODAL -->
 <div class="modal fade" id="setupModal" data-bs-backdrop="static" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-primary text-white">
                 <h5 class="modal-title">Session Setup</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-4">
-                <div class="mb-3">
-                    <label class="form-label fw-bold">User Name</label>
-                    <input type="text" id="m_user" class="form-control" placeholder="Enter user name">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Device Type *</label>
+                        <select id="m_device" class="form-select border-primary">
+                            <option value="">-- Select Type --</option>
+                            <option value="Laptop">Laptop</option>
+                            <option value="Mobile">Mobile</option>
+                            <option value="Tablet">Tablet</option>
+                            <option value="Peripherals">Peripherals</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Scan Mode</label>
+                        <div class="btn-group w-100">
+                            <input type="radio" class="btn-check" name="mode" id="mode1" value="single" checked>
+                            <label class="btn btn-outline-primary" for="mode1">Single</label>
+                            <input type="radio" class="btn-check" name="mode" id="mode2" value="multiple">
+                            <label class="btn btn-outline-primary" for="mode2">Bulk</label>
+                        </div>
+                    </div>
                 </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Update Status</label>
+                    <div class="row g-2">
+                        <div class="col-4"><input type="radio" class="btn-check" name="status" id="st1" value="In Stock" checked><label class="btn btn-sm btn-outline-secondary w-100" for="st1">In Stock</label></div>
+                        <div class="col-4"><input type="radio" class="btn-check" name="status" id="st2" value="Loaned"><label class="btn btn-sm btn-outline-secondary w-100" for="st2">Loaned</label></div>
+                        <div class="col-4"><input type="radio" class="btn-check" name="status" id="st3" value="Repair"><label class="btn btn-sm btn-outline-secondary w-100" for="st3">Repair</label></div>
+                        <div class="col-4"><input type="radio" class="btn-check" name="status" id="st4" value="In Use"><label class="btn btn-sm btn-outline-secondary w-100" for="st4">In Use</label></div>
+                        <div class="col-4"><input type="radio" class="btn-check" name="status" id="st5" value="Retired"><label class="btn btn-sm btn-outline-secondary w-100" for="st5">Retired</label></div>
+                    </div>
+                </div>
+
                 <div class="mb-3">
                     <label class="form-label fw-bold">Department</label>
                     <select id="m_dept" class="form-select">
@@ -144,26 +173,48 @@
                         <option value="Others">Others</option>
                     </select>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Scan Mode</label>
-                    <div class="btn-group w-100">
-                        <input type="radio" class="btn-check" name="mode" id="mode1" value="single" checked>
-                        <label class="btn btn-outline-primary" for="mode1">Single</label>
-                        <input type="radio" class="btn-check" name="mode" id="mode2" value="multiple">
-                        <label class="btn btn-outline-primary" for="mode2">Bulk</label>
+
+                <hr>
+
+                <div id="dynamic_fields">
+                    <div class="mb-3" id="field_name" style="display:none;">
+                        <label class="form-label fw-bold">Person Name *</label>
+                        <input type="text" id="m_user" class="form-control" placeholder="Required">
+                    </div>
+
+                    <div id="group_loan" style="display:none;">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Email *</label>
+                            <input type="email" id="m_email" class="form-control" placeholder="Required">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Return Date *</label>
+                            <input type="date" id="m_date" class="form-control">
+                        </div>
+                    </div>
+
+                    <div id="group_repair" style="display:none;">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Issue Notes *</label>
+                            <textarea id="m_notes" class="form-control" rows="2" placeholder="Required"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Photo of Issue *</label>
+                            <input type="file" id="m_image" class="form-control" accept="image/*">
+                        </div>
+                    </div>
+
+                    <div id="group_stock" class="row">
+                        <div class="col-6 mb-3">
+                            <label class="form-label fw-bold">Purchase Date</label>
+                            <input type="date" id="m_purchase" class="form-control">
+                        </div>
+                        <div class="col-6 mb-3">
+                            <label class="form-label fw-bold">End of Cycle</label>
+                            <input type="date" id="m_end" class="form-control">
+                        </div>
                     </div>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Update Status</label>
-                    <div class="row g-2">
-                        <div class="col-6"><input type="radio" class="btn-check" name="status" id="st1" value="In Stock" checked><label class="btn btn-sm btn-outline-secondary w-100" for="st1">In Stock</label></div>
-                        <div class="col-6"><input type="radio" class="btn-check" name="status" id="st2" value="In Use"><label class="btn btn-sm btn-outline-secondary w-100" for="st2">In Use</label></div>
-                    </div>
-                </div>
-                <input type="hidden" id="m_device" value="Laptop">
-                <input type="hidden" id="m_email" value="">
-                <input type="hidden" id="m_date" value="">
-                <input type="hidden" id="m_notes" value="">
             </div>
             <div class="modal-footer border-0">
                 <button class="btn btn-primary w-100 py-3 fw-bold" onclick="confirmSetup()">CONFIRM & START</button>
@@ -179,17 +230,25 @@ let activeFieldId = 'scan_serial';
 let session = {};
 let promptModal;
 
-// Fix for Illegal Invocation: Initialize modal correctly
 document.addEventListener('DOMContentLoaded', () => {
     const promptEl = document.getElementById('promptModal');
     if (promptEl) promptModal = new bootstrap.Modal(promptEl);
-    
-    // Safety check for share-modal.js error
-    const shareBtn = document.getElementById('shareBtn');
-    if (shareBtn) {
-        shareBtn.addEventListener('click', () => console.log("Share clicked"));
-    }
+
+    // Initial status visibility check
+    updateFieldVisibility('In Stock');
 });
+
+// Handle Dynamic Field Visibility
+document.querySelectorAll('input[name="status"]').forEach(radio => {
+    radio.addEventListener('change', (e) => updateFieldVisibility(e.target.value));
+});
+
+function updateFieldVisibility(status) {
+    document.getElementById('field_name').style.display = (status === 'Loaned' || status === 'Repair') ? 'block' : 'none';
+    document.getElementById('group_loan').style.display = (status === 'Loaned') ? 'block' : 'none';
+    document.getElementById('group_repair').style.display = (status === 'Repair') ? 'block' : 'none';
+    document.getElementById('group_stock').style.display = (status === 'In Stock') ? 'flex' : 'none';
+}
 
 function setNextField(id) {
     if (promptModal) promptModal.hide();
@@ -199,20 +258,52 @@ function setNextField(id) {
     if (scanner) scanner.resume();
 }
 
-function confirmSetup() {
+const toBase64 = file => new Promise((resolve, reject) => {
+    if (!file) return resolve(null);
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = error => reject(error);
+});
+
+async function confirmSetup() {
+    const status = document.querySelector('input[name="status"]:checked').value;
+    const device = document.getElementById('m_device').value;
+    const user = document.getElementById('m_user').value;
+    const email = document.getElementById('m_email').value;
+    const date = document.getElementById('m_date').value;
+    const notes = document.getElementById('m_notes').value;
+    const imgFile = document.getElementById('m_image').files[0];
+
+    // Mandatory Checks
+    if (!device) return alert("Device Type is mandatory.");
+    
+    if (status === 'Loaned') {
+        if (!user || !email || !date) return alert("Name, Email, and Return Date are mandatory for Loans.");
+    }
+    
+    let base64Image = null;
+    if (status === 'Repair') {
+        if (!user || !notes || !imgFile) return alert("Name, Notes, and Photo are mandatory for Repairs.");
+        base64Image = await toBase64(imgFile);
+    }
+
     session = {
-        user: document.getElementById('m_user').value || 'User',
+        user: user || 'System',
         dept: document.getElementById('m_dept').value,
         mode: document.querySelector('input[name="mode"]:checked').value,
-        status: document.querySelector('input[name="status"]:checked').value,
-        device: document.getElementById('m_device').value,
-        email: document.getElementById('m_email').value,
-        date: document.getElementById('m_date').value,
-        notes: document.getElementById('m_notes').value
+        status: status,
+        device: device,
+        email: email,
+        date: date,
+        notes: notes,
+        purchase_date: document.getElementById('m_purchase').value,
+        end_of_cycle: document.getElementById('m_end').value,
+        image_data: base64Image
     };
 
     const setupEl = document.getElementById('setupModal');
-    const setupInst = bootstrap.Modal.getInstance(setupEl) || new bootstrap.Modal(setupEl);
+    const setupInst = bootstrap.Modal.getInstance(setupEl);
     setupInst.hide();
     startUI();
 }
@@ -225,6 +316,7 @@ function startUI() {
     document.getElementById('ui_user').innerText = session.user;
     document.getElementById('ui_mode').innerText = session.mode.toUpperCase();
     document.getElementById('ui_status').innerText = session.status;
+    document.getElementById('ui_dept').innerText = session.dept;
 
     if (!scanner) {
         scanner = new Html5Qrcode("reader");
@@ -252,9 +344,16 @@ function saveData() {
         code: code,
         imei: document.getElementById('scan_imei').value,
         mac_address: document.getElementById('scan_mac').value,
-        person_name: session.user, department: session.dept,
-        device_type: session.device, status: session.status, 
-        email: session.email, return_date: session.date, notes: session.notes
+        device_type: session.device,
+        department: session.dept,
+        status: session.status,
+        person_name: session.user,
+        email: session.email,
+        return_date: session.date,
+        notes: session.notes,
+        purchase_date: session.purchase_date,
+        end_of_cycle: session.end_of_cycle,
+        image_data: session.image_data
     };
 
     fetch('/scanned', {
@@ -267,13 +366,10 @@ function saveData() {
         if (data.status === 'success') {
             showToast();
             addTableRow(payload, data);
-            
-            // Continuous workflow for bulk mode
-            if (session.mode === 'multiple') {
-                resetFields();
-            } else {
-                finishSession();
-            }
+            if (session.mode === 'multiple') resetFields();
+            else finishSession();
+        } else {
+            alert("Error: " + data.message);
         }
     })
     .catch(err => alert("Save Error: " + err));
