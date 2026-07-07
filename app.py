@@ -1,10 +1,9 @@
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
 from datetime import datetime
 import os
-import io
-import csv
+import sys
 
 app = Flask(__name__)
 
@@ -16,6 +15,7 @@ DB_NAME = os.environ.get('DB_NAME', 'inventory')
 
 app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['PROPAGATE_EXCEPTIONS'] = True
 
 db = SQLAlchemy(app)
 
@@ -24,99 +24,95 @@ class InventoryScan(db.Model):
     code = db.Column(db.String(100), nullable=False)
     imei = db.Column(db.String(100), nullable=True)
     mac_address = db.Column(db.String(100), nullable=True)
-    
-    # New Fields
-    device_type = db.Column(db.String(50), nullable=False)
-    device_type_other = db.Column(db.String(100), nullable=True)
-    department = db.Column(db.String(50), nullable=False)
-    department_other = db.Column(db.String(100), nullable=True)
+    device_type = db.Column(db.String(50))
+    department = db.Column(db.String(50))
     status = db.Column(db.String(50), nullable=False)
-    
-    # Loan Tracking
-    borrower_name = db.Column(db.String(100), nullable=True)
-    borrower_email = db.Column(db.String(120), nullable=True)
-    loan_start_date = db.Column(db.Date, nullable=True)
-    expected_return_date = db.Column(db.Date, nullable=True)
-    
+    person_name = db.Column(db.String(100), nullable=True)
+    email = db.Column(db.String(120), nullable=True)
+    return_date = db.Column(db.Date, nullable=True)
     notes = db.Column(db.Text, nullable=True)
     is_flagged = db.Column(db.Boolean, default=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
 def init_db():
     with app.app_context():
-        db.create_all()
-        # Ensure all columns exist for migration
-        cols = ["borrower_name", "borrower_email", "loan_start_date", "expected_return_date", "device_type_other", "department_other"]
-        for col in cols:
-            try:
-                db.session.execute(text(f"ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS {col} VARCHAR"))
-                db.session.commit()
-            except: db.session.rollback()
+        try:
+            db.create_all()
+            cols = ["imei", "mac_address", "device_type", "department", "person_name", "email", "return_date", "is_flagged", "timestamp"]
+            for col in cols:
+                try:
+                    db.session.execute(text(f"ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS {col} VARCHAR"))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+        except Exception as e:
+            print(f"Init Error: {e}", file=sys.stderr)
 
 init_db()
 
 @app.route('/')
 def index():
-    # Maintenance: Auto-flag overdue items
-    today = datetime.now().date()
-    InventoryScan.query.filter(
-        InventoryScan.status == 'Loan',
-        InventoryScan.expected_return_date < today,
-        InventoryScan.is_flagged == False
-    ).update({InventoryScan.is_flagged: True})
-    db.session.commit()
-
-    scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).all()
-    return render_template('index.html', scans=scans)
+    recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(100).all()
+    return render_template('index.html', scans=recent_scans)
 
 @app.route('/scanned', methods=['POST'])
 def scanned():
     data = request.json
+    code = data.get("code")
+    status = data.get("status")
+    r_date_str = data.get("return_date")
+    
+    r_date = None
+    if r_date_str and r_date_str.strip():
+        try:
+            r_date = datetime.strptime(r_date_str, '%Y-%m-%d').date()
+        except: r_date = None
+    
     try:
-        # Date parsing
-        start_dt = datetime.strptime(data['loan_start'], '%Y-%m-%d').date() if data.get('loan_start') else None
-        end_dt = datetime.strptime(data['loan_end'], '%Y-%m-%d').date() if data.get('loan_end') else None
-        
-        # Auto-flag if saving an already overdue loan
-        is_overdue = False
-        if end_dt and end_dt < datetime.now().date() and data['status'] == 'Loan':
-            is_overdue = True
+        repair_count = InventoryScan.query.filter_by(code=code, status='Repair').count()
+        flag_it = False
+        if status == 'Repair' and repair_count >= 2:
+            flag_it = True
+        elif status == 'Loaned' and r_date and r_date < datetime.now().date():
+            flag_it = True
 
         new_scan = InventoryScan(
-            code=data['code'],
-            imei=data.get('imei'),
-            mac_address=data.get('mac_address'),
-            device_type=data['device_type'],
-            device_type_other=data.get('device_type_other'),
-            department=data['department'],
-            department_other=data.get('department_other'),
-            status=data['status'],
-            borrower_name=data.get('borrower_name'),
-            borrower_email=data.get('borrower_email'),
-            loan_start_date=start_dt,
-            expected_return_date=end_dt,
-            notes=data.get('notes'),
-            is_flagged=is_overdue
+            code=code,
+            imei=data.get("imei"),
+            mac_address=data.get("mac_address"),
+            device_type=data.get("device_type"),
+            department=data.get("department"),
+            status=status,
+            person_name=data.get("person_name"),
+            email=data.get("email"),
+            return_date=r_date,
+            notes=data.get("notes"),
+            is_flagged=flag_it
         )
         db.session.add(new_scan)
         db.session.commit()
-        return jsonify({"status": "success", "id": new_scan.id})
+        
+        return jsonify({
+            "status": "success", 
+            "id": new_scan.id,
+            "is_flagged": flag_it,
+            "time": new_scan.timestamp.strftime('%H:%M')
+        })
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/export')
-def export_data():
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(['ID', 'Serial', 'IMEI', 'MAC', 'Type', 'Dept', 'Status', 'Borrower', 'Due Date', 'Flagged'])
-    
-    records = InventoryScan.query.all()
-    for r in records:
-        writer.writerow([r.id, r.code, r.imei, r.mac_address, r.device_type, r.department, r.status, r.borrower_name, r.expected_return_date, r.is_flagged])
-    
-    output.seek(0)
-    return send_file(io.BytesIO(output.getvalue().encode()), mimetype='text/csv', as_attachment=True, download_name='inventory_report.csv')
+@app.route('/delete', methods=['POST'])
+def delete_scans():
+    data = request.json
+    ids = data.get('ids', [])
+    try:
+        InventoryScan.query.filter(InventoryScan.id.in_(ids)).delete(synchronize_session=False)
+        db.session.commit()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8506)
