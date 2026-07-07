@@ -24,13 +24,18 @@ class InventoryScan(db.Model):
     code = db.Column(db.String(100), nullable=False)
     imei = db.Column(db.String(100), nullable=True)
     mac_address = db.Column(db.String(100), nullable=True)
-    device_type = db.Column(db.String(50))
-    department = db.Column(db.String(50))
+    device_type = db.Column(db.String(50), nullable=False)
+    department = db.Column(db.String(50), nullable=True)
     status = db.Column(db.String(50), nullable=False)
     person_name = db.Column(db.String(100), nullable=True)
     email = db.Column(db.String(120), nullable=True)
     return_date = db.Column(db.Date, nullable=True)
     notes = db.Column(db.Text, nullable=True)
+    # New Fields
+    purchase_date = db.Column(db.Date, nullable=True)
+    end_of_cycle = db.Column(db.Date, nullable=True)
+    image_data = db.Column(db.Text, nullable=True) # Stores base64 photo
+    
     is_flagged = db.Column(db.Boolean, default=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -38,10 +43,16 @@ def init_db():
     with app.app_context():
         try:
             db.create_all()
-            cols = ["imei", "mac_address", "device_type", "department", "person_name", "email", "return_date", "is_flagged", "timestamp"]
-            for col in cols:
+            # Migration logic for existing tables
+            cols_to_add = {
+                "purchase_date": "DATE",
+                "end_of_cycle": "DATE",
+                "image_data": "TEXT",
+                "device_type": "VARCHAR(50)"
+            }
+            for col, col_type in cols_to_add.items():
                 try:
-                    db.session.execute(text(f"ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS {col} VARCHAR"))
+                    db.session.execute(text(f"ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS {col} {col_type}"))
                     db.session.commit()
                 except Exception:
                     db.session.rollback()
@@ -58,26 +69,27 @@ def index():
 @app.route('/scanned', methods=['POST'])
 def scanned():
     data = request.json
-    code = data.get("code")
     status = data.get("status")
-    r_date_str = data.get("return_date")
     
-    r_date = None
-    if r_date_str and r_date_str.strip():
-        try:
-            r_date = datetime.strptime(r_date_str, '%Y-%m-%d').date()
-        except: r_date = None
-    
+    def parse_dt(s):
+        if not s or not s.strip(): return None
+        try: return datetime.strptime(s, '%Y-%m-%d').date()
+        except: return None
+
     try:
-        repair_count = InventoryScan.query.filter_by(code=code, status='Repair').count()
+        r_date = parse_dt(data.get("return_date"))
+        
+        # Flagging logic
         flag_it = False
-        if status == 'Repair' and repair_count >= 2:
+        if status == 'Loaned' and r_date and r_date < datetime.now().date():
             flag_it = True
-        elif status == 'Loaned' and r_date and r_date < datetime.now().date():
-            flag_it = True
+        elif status == 'Repair':
+            # Check if this code has been in repair many times before
+            repair_count = InventoryScan.query.filter_by(code=data.get("code"), status='Repair').count()
+            if repair_count >= 2: flag_it = True
 
         new_scan = InventoryScan(
-            code=code,
+            code=data.get("code"),
             imei=data.get("imei"),
             mac_address=data.get("mac_address"),
             device_type=data.get("device_type"),
@@ -87,6 +99,9 @@ def scanned():
             email=data.get("email"),
             return_date=r_date,
             notes=data.get("notes"),
+            purchase_date=parse_dt(data.get("purchase_date")),
+            end_of_cycle=parse_dt(data.get("end_of_cycle")),
+            image_data=data.get("image_data"),
             is_flagged=flag_it
         )
         db.session.add(new_scan)
