@@ -11,11 +11,8 @@ from sqlalchemy import text
 
 app = Flask(__name__)
 
-# --- SECURITY CONFIGURATION ---
-# Fetches secrets from Hostinger Environment Settings
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key-change-me')
-
-# PostgreSQL Connection
+# --- CONFIGURATION ---
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'default-dev-key')
 DB_USER = os.environ.get('DB_USER')
 DB_PASS = os.environ.get('DB_PASS')
 DB_HOST = os.environ.get('DB_HOST')
@@ -28,8 +25,9 @@ db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-# --- DATABASE MODELS ---
+# --- MODELS ---
 class User(UserMixin, db.Model):
+    __tablename__ = 'user' # Explicit naming for reserved keyword handling
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(100), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
@@ -57,26 +55,24 @@ class InventoryScan(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# --- DB INITIALIZATION & MIGRATION ---
+# --- DB INITIALIZATION ---
 def init_db():
     with app.app_context():
         try:
             db.create_all()
-            # Ensure is_admin column exists (Migration helper)
+            # Migration check: Ensure is_admin exists
             try:
-                db.session.execute(text("ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE"))
+                db.session.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE'))
                 db.session.commit()
             except Exception: db.session.rollback()
 
-            # Create default admin if not exists (admin / P12345)
+            # Ensure default admin exists
             if not User.query.filter_by(username='admin').first():
-                admin = User(username='admin', 
-                             password=generate_password_hash('P12345'), 
-                             is_admin=True)
+                admin = User(username='admin', password=generate_password_hash('P12345'), is_admin=True)
                 db.session.add(admin)
                 db.session.commit()
         except Exception as e:
-            print(f"Init Error: {e}", file=sys.stderr)
+            print(f"DB Init Error: {e}", file=sys.stderr)
 
 init_db()
 
@@ -85,21 +81,17 @@ def sanitize(val, length=100):
     if not val: return None
     return html.escape(str(val).strip()[:length])
 
-def is_valid_email(email):
-    if not email: return True
-    return re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email) is not None
-
-# --- AUTH ROUTES ---
+# --- ROUTES ---
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = sanitize(request.form.get('username'))
-        password = request.form.get('password')
-        user = User.query.filter_by(username=username).first()
-        if user and check_password_hash(user.password, password):
+        u = sanitize(request.form.get('username'))
+        p = request.form.get('password')
+        user = User.query.filter_by(username=u).first()
+        if user and check_password_hash(user.password, p):
             login_user(user)
             return redirect(url_for('index'))
-        flash('Invalid credentials')
+        flash('Invalid username or password')
     return render_template('login.html')
 
 @app.route('/logout')
@@ -108,7 +100,12 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# --- ADMIN ROUTES ---
+@app.route('/')
+@login_required
+def index():
+    scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(50).all()
+    return render_template('index.html', scans=scans, user=current_user)
+
 @app.route('/admin/users', methods=['GET', 'POST'])
 @login_required
 def manage_users():
@@ -119,12 +116,14 @@ def manage_users():
         p = request.form.get('password')
         a = True if request.form.get('is_admin') else False
         if User.query.filter_by(username=u).first():
-            flash("User exists!")
+            flash("User already exists!")
         else:
-            db.session.add(User(username=u, password=generate_password_hash(p), is_admin=a))
+            new_user = User(username=u, password=generate_password_hash(p), is_admin=a)
+            db.session.add(new_user)
             db.session.commit()
-            flash("User created!")
-    return render_template('admin_users.html', users=User.query.all())
+            flash("User created successfully.")
+    users = User.query.all()
+    return render_template('admin_users.html', users=users)
 
 @app.route('/admin/users/delete/<int:user_id>')
 @login_required
@@ -134,23 +133,13 @@ def delete_user(user_id):
     if u and u.id != current_user.id:
         db.session.delete(u)
         db.session.commit()
+        flash("User deleted.")
     return redirect(url_for('manage_users'))
-
-# --- APP ROUTES ---
-@app.route('/')
-@login_required
-def index():
-    scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(100).all()
-    return render_template('index.html', scans=scans, user=current_user)
 
 @app.route('/scanned', methods=['POST'])
 @login_required
 def scanned():
     data = request.get_json()
-    email = sanitize(data.get("email"), 120)
-    if email and not is_valid_email(email):
-        return jsonify({"status": "error", "message": "Invalid email"}), 400
-
     def parse_dt(s):
         try: return datetime.strptime(s, '%Y-%m-%d').date() if s else None
         except: return None
@@ -164,17 +153,17 @@ def scanned():
             department=sanitize(data.get("dept")),
             status=sanitize(data.get("status")),
             person_name=sanitize(data.get("user")),
-            employee_id=sanitize(data.get("empId"), 50),
-            email=email,
+            employee_id=sanitize(data.get("empId")),
+            email=sanitize(data.get("email"), 120),
             return_date=parse_dt(data.get("date")),
-            notes=sanitize(data.get("notes"), 1000),
             purchase_date=parse_dt(data.get("purchase")),
             end_of_cycle=parse_dt(data.get("end")),
+            notes=sanitize(data.get("notes"), 1000),
             image_data=data.get("image_data")
         )
         db.session.add(new_scan)
         db.session.commit()
-        return jsonify({"status": "success", "id": new_scan.id, "time": new_scan.timestamp.strftime('%H:%M')})
+        return jsonify({"status": "success", "id": new_scan.id})
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -182,6 +171,10 @@ def scanned():
 @app.route('/delete', methods=['POST'])
 @login_required
 def delete_scans():
+    # BACKEND PROTECTION: Only admins can delete
+    if not current_user.is_admin:
+        return jsonify({"status": "error", "message": "Admin privileges required"}), 403
+        
     ids = request.json.get('ids', [])
     InventoryScan.query.filter(InventoryScan.id.in_(ids)).delete(synchronize_session=False)
     db.session.commit()
