@@ -40,7 +40,7 @@
                 <h5 class="mb-1">Active: <span id="ui_user" class="text-primary"></span> (<span id="ui_empid"></span>)</h5>
                 <span id="ui_status" class="badge bg-primary"></span> 
                 <span id="ui_dept" class="badge bg-secondary"></span>
-                <span id="ui_device" class="badge bg-dark"></span>
+                <span id="ui_mode" class="badge bg-info text-dark"></span>
             </div>
             <button class="btn btn-sm btn-danger fw-bold" onclick="location.reload()">End Session</button>
         </div>
@@ -70,7 +70,7 @@
         <div class="table-responsive">
             <table class="table table-hover align-middle">
                 <thead class="table-light"><tr><th>Time</th><th>Item</th><th>Status</th><th>Employee</th><th>Action</th></tr></thead>
-                <tbody>
+                <tbody id="history_body">
                     {% for s in scans %}
                     <tr>
                         <td class="small text-muted">{{ s.timestamp.strftime('%H:%M') }}</td>
@@ -96,13 +96,11 @@
         <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-primary text-white"><h5 class="modal-title fw-bold">Session Setup</h5></div>
             <div class="modal-body p-4">
-                <!-- Employee Info -->
                 <div class="row mb-3">
                     <div class="col-md-6"><label class="mandatory-label small fw-bold">Employee Name</label><input type="text" id="m_user" class="form-control"></div>
                     <div class="col-md-6"><label class="mandatory-label small fw-bold">Employee ID</label><input type="text" id="m_emp_id" class="form-control"></div>
                 </div>
 
-                <!-- Device & Department Selection -->
                 <div class="row mb-3">
                     <div class="col-md-6">
                         <label class="mandatory-label small fw-bold">Device</label>
@@ -120,7 +118,16 @@
                     </div>
                 </div>
 
-                <!-- Status Selection -->
+                <div class="mb-3">
+                    <label class="mandatory-label small fw-bold">Scanning Mode</label>
+                    <div class="btn-group w-100">
+                        <input type="radio" class="btn-check" name="scan_mode" id="mode_single" value="Single" checked>
+                        <label class="btn btn-outline-primary" for="mode_single">Single (Reload after Save)</label>
+                        <input type="radio" class="btn-check" name="scan_mode" id="mode_multi" value="Multiple">
+                        <label class="btn btn-outline-primary" for="mode_multi">Multiple (Continuous)</label>
+                    </div>
+                </div>
+
                 <div class="mb-4">
                     <label class="mandatory-label small fw-bold">Status</label>
                     <div class="btn-group w-100 flex-wrap">
@@ -132,7 +139,6 @@
                     </div>
                 </div>
 
-                <!-- Dynamic Sections -->
                 <div id="g_stock" style="display:none;" class="row">
                     <div class="col-md-6 mb-3"><label class="mandatory-label small fw-bold">Purchase Date</label><input type="date" id="m_purchase" class="form-control"></div>
                     <div class="col-md-6 mb-3"><label class="mandatory-label small fw-bold">End Cycle</label><input type="date" id="m_end" class="form-control"></div>
@@ -201,6 +207,7 @@ async function confirmSetup() {
     const empId = document.getElementById('m_emp_id').value;
     let device = document.getElementById('m_device').value;
     let dept = document.getElementById('m_dept').value;
+    const scanMode = document.querySelector('input[name="scan_mode"]:checked').value;
 
     if(!user || !empId) return alert("Please enter Employee Name and ID.");
     
@@ -208,7 +215,7 @@ async function confirmSetup() {
     if(dept === 'Other') dept = document.getElementById('m_other_dept').value;
 
     session = { 
-        user, empId, device, dept,
+        user, empId, device, dept, scanMode,
         status: document.querySelector('input[name="status"]:checked').value,
         email: document.getElementById('m_email').value, 
         date: document.getElementById('m_date').value,
@@ -228,9 +235,17 @@ async function confirmSetup() {
     document.getElementById('ui_status').textContent = session.status;
     document.getElementById('ui_dept').textContent = dept;
     document.getElementById('ui_device').textContent = device;
+    document.getElementById('ui_mode').textContent = scanMode + " Mode";
 
-    scanner = new Html5Qrcode("reader");
-    scanner.start({ facingMode: "environment" }, { fps: 30, qrbox: 250 }, (text) => {
+    startScanner();
+}
+
+function startScanner() {
+    if(!scanner) {
+        scanner = new Html5Qrcode("reader");
+    }
+    // SENSITIVITY INCREASED TO 60 FPS
+    scanner.start({ facingMode: "environment" }, { fps: 60, qrbox: 250 }, (text) => {
         document.getElementById(activeFieldId).value = text;
         if(activeFieldId === 'scan_serial') {
             scanner.pause();
@@ -256,11 +271,31 @@ function saveData() {
         imei: document.getElementById('scan_imei').value, 
         mac_address: document.getElementById('scan_mac').value 
     };
+
     fetch('/scanned', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })
     .then(r => r.json()).then(d => {
         if(d.status === 'success') {
             document.getElementById('save_toast').style.display = 'block';
-            setTimeout(() => location.reload(), 1500);
+            setTimeout(() => { document.getElementById('save_toast').style.display = 'none'; }, 2000);
+            
+            if(session.scanMode === 'Multiple') {
+                // RESET FOR NEXT SCAN WITHOUT RELOADING
+                document.getElementById('scan_serial').value = '';
+                document.getElementById('scan_imei').value = '';
+                document.getElementById('scan_mac').value = '';
+                activeFieldId = 'scan_serial';
+                document.querySelectorAll('#scanner_section input').forEach(i => i.classList.remove('active-scan-field'));
+                document.getElementById('scan_serial').classList.add('active-scan-field');
+                document.getElementById('btn_save').disabled = true;
+                scanner.resume();
+                
+                // Add to history table locally
+                const table = document.querySelector('tbody');
+                const row = `<tr><td class="small text-muted">Just Now</td><td><strong>${payload.code}</strong><br><small>${payload.device_type}</small></td><td><span class="badge bg-secondary">${payload.status}</span></td><td>${payload.user}</td><td>-</td></tr>`;
+                table.insertAdjacentHTML('afterbegin', row);
+            } else {
+                location.reload();
+            }
         }
     });
 }
