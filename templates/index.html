@@ -74,7 +74,7 @@
         </div>
     </div>
 
-    <!-- LOG -->
+    <!-- LIVE LOG -->
     <div class="card p-4">
         <h5 class="mb-3">Live Activity Log</h5>
         <div class="table-responsive">
@@ -134,20 +134,11 @@
                     </div>
                     <div class="col-md-6 mb-3" id="group_other_device" style="display:none;">
                         <label class="form-label fw-bold mandatory-label">Specify Device Type</label>
-                        <input type="text" id="m_other_device" class="form-control border-primary" placeholder="Enter device type">
+                        <input type="text" id="m_other_device" class="form-control border-primary">
                     </div>
                 </div>
 
                 <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label fw-bold">Scan Mode</label>
-                        <div class="btn-group w-100">
-                            <input type="radio" class="btn-check" name="mode" id="mode1" value="single" checked>
-                            <label class="btn btn-outline-primary" for="mode1">Single</label>
-                            <input type="radio" class="btn-check" name="mode" id="mode2" value="multiple">
-                            <label class="btn btn-outline-primary" for="mode2">Bulk</label>
-                        </div>
-                    </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold">Department</label>
                         <select id="m_dept" class="form-select" onchange="toggleUI()">
@@ -159,11 +150,10 @@
                             <option value="Other">Other</option>
                         </select>
                     </div>
-                </div>
-
-                <div class="mb-3" id="group_other_dept" style="display:none;">
-                    <label class="form-label fw-bold mandatory-label">Specify Dept</label>
-                    <input type="text" id="m_other_dept" class="form-control">
+                    <div class="col-md-6 mb-3" id="group_other_dept" style="display:none;">
+                        <label class="form-label fw-bold mandatory-label">Specify Dept</label>
+                        <input type="text" id="m_other_dept" class="form-control">
+                    </div>
                 </div>
 
                 <div class="mb-3">
@@ -180,13 +170,15 @@
                 <hr>
 
                 <div id="dynamic_fields">
+                    <!-- Loan -->
                     <div id="group_loan" style="display:none;">
                         <div class="row">
-                            <div class="col-md-6 mb-3"><label class="form-label fw-bold mandatory-label">Email</label><input type="email" id="m_email" class="form-control"></div>
+                            <div class="col-md-6 mb-3"><label class="form-label fw-bold mandatory-label">Email</label><input type="email" id="m_email" class="form-control" placeholder="user@domain.com"></div>
                             <div class="col-md-6 mb-3"><label class="form-label fw-bold mandatory-label">Return Date</label><input type="date" id="m_date" class="form-control"></div>
                         </div>
                     </div>
 
+                    <!-- Stock -->
                     <div id="group_stock" class="row" style="display:none;">
                         <div class="col-6 mb-3"><label class="form-label fw-bold mandatory-label">Purchase Date</label><input type="date" id="m_purchase" class="form-control"></div>
                         <div class="col-6 mb-3"><label class="form-label fw-bold mandatory-label">End of Cycle</label><input type="date" id="m_end" class="form-control"></div>
@@ -194,11 +186,21 @@
 
                     <div class="mb-3">
                         <label class="form-label fw-bold">Notes (Optional)</label>
-                        <textarea id="m_notes" class="form-control" rows="2" placeholder="Optional details..."></textarea>
+                        <textarea id="m_notes" class="form-control" rows="2"></textarea>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">Photo (Optional)</label>
                         <input type="file" id="m_image" class="form-control" accept="image/*">
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Scan Mode</label>
+                    <div class="btn-group w-100">
+                        <input type="radio" class="btn-check" name="mode" id="mode1" value="single" checked>
+                        <label class="btn btn-outline-primary" for="mode1">Single Scan</label>
+                        <input type="radio" class="btn-check" name="mode" id="mode2" value="multiple">
+                        <label class="btn btn-outline-primary" for="mode2">Bulk Scan</label>
                     </div>
                 </div>
             </div>
@@ -249,6 +251,11 @@ function toggleUI() {
     document.getElementById('group_stock').style.display = (status === 'In Stock') ? 'flex' : 'none';
 }
 
+function validateEmail(email) {
+    const re = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    return re.test(String(email).toLowerCase());
+}
+
 const toBase64 = f => new Promise((res, rej) => {
     if (!f) return res(null);
     const r = new FileReader();
@@ -276,9 +283,7 @@ async function confirmSetup() {
     if (device === 'Other') {
         device = document.getElementById('m_other_device').value;
         if (!device) return alert("Please specify the device type.");
-    } else if (!device) {
-        return alert("Device Type is mandatory.");
-    }
+    } else if (!device) return alert("Device Type is mandatory.");
     
     if (dept === 'Other') {
         dept = document.getElementById('m_other_dept').value;
@@ -286,7 +291,11 @@ async function confirmSetup() {
     }
 
     if (status === 'In Stock' && (!purchase || !end)) return alert("Purchase Date and End of Cycle are mandatory for Stock.");
-    if (status === 'Loaned' && (!email || !date)) return alert("Email and Return Date are mandatory for Loans.");
+    
+    if (status === 'Loaned') {
+        if (!email || !date) return alert("Email and Return Date are mandatory for Loans.");
+        if (!validateEmail(email)) return alert("Please enter a valid email address.");
+    }
 
     session = {
         user, empId, dept, status, device, email, date, notes, purchase, end,
@@ -302,14 +311,15 @@ function startUI() {
     document.getElementById('start_section').style.display = 'none';
     document.getElementById('session_info').style.display = 'block';
     document.getElementById('scanner_section').style.display = 'block';
-    document.getElementById('ui_user').innerText = session.user;
-    document.getElementById('ui_empid').innerText = session.empId;
-    document.getElementById('ui_mode').innerText = session.mode.toUpperCase();
-    document.getElementById('ui_status').innerText = session.status;
-    document.getElementById('ui_dept').innerText = session.dept;
+    document.getElementById('ui_user').textContent = session.user;
+    document.getElementById('ui_empid').textContent = session.empId;
+    document.getElementById('ui_mode').textContent = session.mode.toUpperCase();
+    document.getElementById('ui_status').textContent = session.status;
+    document.getElementById('ui_dept').textContent = session.dept;
 
     if (!scanner) {
         scanner = new Html5Qrcode("reader");
+        // SENSITIVE: 30 FPS for fast detection
         scanner.start({ facingMode: "environment" }, { fps: 30, qrbox: 250 }, (text) => {
             document.getElementById(activeFieldId).value = text;
             if (activeFieldId === 'scan_serial') {
@@ -338,9 +348,33 @@ function saveData() {
         if (d.status === 'success') {
             document.getElementById('save_toast').style.display = 'block';
             setTimeout(() => document.getElementById('save_toast').style.display = 'none', 2000);
+            addTableRow(payload, d);
             if (session.mode === 'multiple') resetFields(); else finishSession();
-        }
+        } else alert("Error: " + d.message);
     });
+}
+
+function addTableRow(item, meta) {
+    const tbody = document.getElementById('history_body');
+    const row = document.createElement('tr');
+    row.id = `row-${meta.id}`;
+
+    const cells = [
+        { text: meta.time, class: "small text-muted" },
+        { html: `<div class="fw-bold">${item.code}</div><div class="small text-muted">${item.device_type}</div>` },
+        { html: `<span class="badge rounded-pill bg-secondary status-badge">${item.status}</span>` },
+        { text: `${item.person_name} (${item.employee_id})` },
+        { html: `<button class="btn btn-sm text-danger" onclick="deleteSingle(${meta.id})">🗑️</button>` }
+    ];
+
+    cells.forEach(c => {
+        const td = document.createElement('td');
+        if (c.class) td.className = c.class;
+        if (c.html) td.innerHTML = c.html; // InnerHTML used only for hardcoded app-generated HTML
+        else td.textContent = c.text; // TextContent used for all user-provided data (Injection Security)
+        row.appendChild(td);
+    });
+    tbody.prepend(row);
 }
 
 function resetFields() {
