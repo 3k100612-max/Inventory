@@ -1,159 +1,136 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask import Flask, render_template, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy import text
 from datetime import datetime
 import os
 import sys
 
-# Load environment variables from .env file
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
-
 app = Flask(__name__)
-# Security: Always use an environment variable for the secret key in production
-app.secret_key = os.environ.get('SECRET_KEY', 'default-dev-key-change-this')
 
-# --- Database Configuration ---
+# Database Configuration - Ensure these match your environment
 DB_USER = os.environ.get('DB_USER', 'postgres')
 DB_PASS = os.environ.get('DB_PASS', 'P12345')
-DB_HOST = os.environ.get('DB_HOST', 'localhost') 
+DB_HOST = os.environ.get('DB_HOST', 'inventory-inventory-sqaoox')
 DB_NAME = os.environ.get('DB_NAME', 'inventory')
-DB_PORT = os.environ.get('DB_PORT', '5432')
 
-app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
+app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# --- FIXED: Connection Pool Settings for Production ---
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    "pool_size": 10,           # Base connections
-    "max_overflow": 5,         # Extra connections during spikes
-    "pool_timeout": 30,        # Seconds to wait for a connection
-    "pool_recycle": 1800,      # Recycle connections every 30 mins to prevent stale links
-    "connect_args": {"connect_timeout": 10}
-}
+app.config['PROPAGATE_EXCEPTIONS'] = True
 
 db = SQLAlchemy(app)
-login_manager = LoginManager(app)
-login_manager.login_view = 'login'
-
-# --- MODELS ---
-
-class Admin(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(50), unique=True, nullable=False)
-    password_hash = db.Column(db.String(200), nullable=False)
-    role = db.Column(db.String(20), default='admin')
 
 class InventoryScan(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    code = db.Column(db.String(100), nullable=False)
-    status = db.Column(db.String(50), nullable=False)
+    code = db.Column(db.String(100), nullable=False) # Serial Number
+    imei = db.Column(db.String(100), nullable=True)
+    mac_address = db.Column(db.String(100), nullable=True)
     device_type = db.Column(db.String(50))
-    department = db.Column(db.String(100), nullable=False)
-    assigned_user = db.Column(db.String(100), nullable=False)
-    notes = db.Column(db.Text)
-    photo = db.Column(db.Text)
+    department = db.Column(db.String(50))
+    peripheral_detail = db.Column(db.String(100))
+    status = db.Column(db.String(50), nullable=False)
+    person_name = db.Column(db.String(100), nullable=True)
+    email = db.Column(db.String(120), nullable=True)
+    return_date = db.Column(db.Date, nullable=True)
+    notes = db.Column(db.Text, nullable=True)
     is_flagged = db.Column(db.Boolean, default=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    user_email = db.Column(db.String(120))
-    return_date = db.Column(db.Date)
-    imei = db.Column(db.String(50))
-    mac_address = db.Column(db.String(50))
 
-@login_manager.user_loader
-def load_user(user_id):
-    return Admin.query.get(int(user_id))
+def run_global_maintenance():
+    """Scans for overdue items safely."""
+    try:
+        today = datetime.now().date()
+        InventoryScan.query.filter(
+            InventoryScan.status == 'Loaned',
+            InventoryScan.return_date < today,
+            InventoryScan.is_flagged == False
+        ).update({InventoryScan.is_flagged: True}, synchronize_session=False)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"Maintenance Error: {e}", file=sys.stderr)
 
-# --- FIXED: Database Initialization Logic ---
-def setup_database():
+def init_db():
+    """Initializes the database without crashing the app on error."""
     with app.app_context():
         try:
             db.create_all()
-            # Check if admin is missing before creating
-            if not Admin.query.filter_by(username='admin').first():
-                hpw = generate_password_hash('admin123')
-                super_user = Admin(username='admin', password_hash=hpw, role='super_admin')
-                db.session.add(super_user)
-                db.session.commit()
-                print(">>> Default Super Admin created (admin / admin123)")
-            else:
-                print(">>> Database ready.")
+            # List of all columns that should exist
+            cols = ["imei", "mac_address", "device_type", "department", "person_name", "email", "return_date", "is_flagged", "timestamp"]
+            for col in cols:
+                try:
+                    # Use individual try-except so one column failure doesn't stop the rest
+                    db.session.execute(text(f"ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS {col} VARCHAR"))
+                    db.session.commit()
+                except Exception as col_err:
+                    db.session.rollback()
+                    print(f"Notice: Column {col} check/add result: {col_err}", file=sys.stderr)
+            print("Database initialization completed.")
         except Exception as e:
-            print(f">>> DATABASE SETUP ERROR: {e}", file=sys.stderr)
-
-# Call setup immediately
-setup_database()
-
-# --- ROUTES ---
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        try:
-            user = Admin.query.filter_by(username=request.form.get('username')).first()
-            if user and check_password_hash(user.password_hash, request.form.get('password')):
-                login_user(user)
-                return redirect(url_for('index'))
-        except Exception as e:
-            flash(f"Database Error: {str(e)}")
-            return render_template('login.html')
-        flash('Invalid username or password')
-    return render_template('login.html')
-
-@app.route('/logout')
-@login_required
-def logout():
-    logout_user()
-    return redirect(url_for('login'))
+            print(f"Critical DB Init Error: {e}", file=sys.stderr)
 
 @app.route('/')
-@login_required
 def index():
-    try:
-        today = datetime.utcnow().date()
-        # Auto-flag overdue loans
-        overdue = InventoryScan.query.filter(
-            InventoryScan.status == 'Loan', 
-            InventoryScan.return_date < today,
-            InventoryScan.is_flagged == False
-        ).all()
-        for item in overdue:
-            item.is_flagged = True
-        db.session.commit()
+    run_global_maintenance()
+    recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(100).all()
+    return render_template('index.html', scans=recent_scans)
 
-        recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(30).all()
-        return render_template('index.html', scans=recent_scans, role=current_user.role)
-    except Exception as e:
-        return f"Database Connection Failed: {e}", 500
-
-@app.route('/add-admin', methods=['POST'])
-@login_required
-def add_admin():
-    if current_user.role != 'super_admin':
-        return jsonify({"status": "error", "message": "Unauthorized"}), 403
-    
+@app.route('/scanned', methods=['POST'])
+def scanned():
     data = request.json
-    username = data.get('username')
-    password = data.get('password')
+    code = data.get("code")
+    status = data.get("status")
+    r_date_str = data.get("return_date")
     
-    if not username or not password:
-        return jsonify({"status": "error", "message": "Missing credentials"}), 400
-
-    if Admin.query.filter_by(username=username).first():
-        return jsonify({"status": "error", "message": "User already exists"}), 400
+    r_date = None
+    if r_date_str and r_date_str.strip():
+        try:
+            r_date = datetime.strptime(r_date_str, '%Y-%m-%d').date()
+        except: r_date = None
     
-    new_admin = Admin(
-        username=username, 
-        password_hash=generate_password_hash(password),
-        role='admin'
-    )
-    db.session.add(new_admin)
-    db.session.commit()
-    return jsonify({"status": "success", "message": f"Admin {username} created"})
+    try:
+        repair_count = InventoryScan.query.filter_by(code=code, status='Repair').count()
+        flag_it = False
+        if status == 'Repair' and repair_count >= 2:
+            flag_it = True
+        elif status == 'Loaned' and r_date and r_date < datetime.now().date():
+            flag_it = True
 
-if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=8506)
+        new_scan = InventoryScan(
+            code=code,
+            imei=data.get("imei"),
+            mac_address=data.get("mac_address"),
+            device_type=data.get("device_type"),
+            department=data.get("department"),
+            status=status,
+            person_name=data.get("person_name"),
+            email=data.get("email"),
+            return_date=r_date,
+            notes=data.get("notes"),
+            is_flagged=flag_it
+        )
+        db.session.add(new_scan)
+        db.session.commit()
+        return jsonify({"status": "success", "is_flagged": flag_it})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/delete', methods=['POST'])
+def delete_scans():
+    data = request.json
+    ids = data.get('ids', [])
+    if not ids:
+        return jsonify({"status": "error", "message": "No items selected"}), 400
+    try:
+        InventoryScan.query.filter(InventoryScan.id.in_(ids)).delete(synchronize_session=False)
+        db.session.commit()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+if __name__ == '__main__':
+    init_db()
+    # Using environment PORT for better compatibility with cloud hosts
+    port = int(os.environ.get("PORT", 8506))
+    app.run(host='0.0.0.0', port=port)
