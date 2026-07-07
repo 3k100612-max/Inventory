@@ -132,6 +132,13 @@
                             <option value="Other">Other</option>
                         </select>
                     </div>
+                    <div class="col-md-6 mb-3" id="group_other_device" style="display:none;">
+                        <label class="form-label fw-bold mandatory-label">Specify Device Type</label>
+                        <input type="text" id="m_other_device" class="form-control border-primary" placeholder="Enter device type">
+                    </div>
+                </div>
+
+                <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold">Scan Mode</label>
                         <div class="btn-group w-100">
@@ -141,6 +148,22 @@
                             <label class="btn btn-outline-primary" for="mode2">Bulk</label>
                         </div>
                     </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Department</label>
+                        <select id="m_dept" class="form-select" onchange="toggleUI()">
+                            <option value="IT">IT</option>
+                            <option value="FINANCE">FINANCE</option>
+                            <option value="PROCUREMENT">PROCUREMENT</option>
+                            <option value="OPERATION">OPERATION</option>
+                            <option value="FACILITIES">FACILITIES</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="mb-3" id="group_other_dept" style="display:none;">
+                    <label class="form-label fw-bold mandatory-label">Specify Dept</label>
+                    <input type="text" id="m_other_dept" class="form-control">
                 </div>
 
                 <div class="mb-3">
@@ -154,28 +177,9 @@
                     </div>
                 </div>
 
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label fw-bold">Department</label>
-                        <select id="m_dept" class="form-select" onchange="toggleUI()">
-                            <option value="IT">IT</option>
-                            <option value="FINANCE">FINANCE</option>
-                            <option value="PROCUREMENT">PROCUREMENT</option>
-                            <option value="OPERATION">OPERATION</option>
-                            <option value="FACILITIES">FACILITIES</option>
-                            <option value="Other">Other</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6 mb-3" id="group_other_dept" style="display:none;">
-                        <label class="form-label fw-bold mandatory-label">Specify Dept</label>
-                        <input type="text" id="m_other_dept" class="form-control">
-                    </div>
-                </div>
-
                 <hr>
 
                 <div id="dynamic_fields">
-                    <!-- Loan Details (Mandatory only for Loaned) -->
                     <div id="group_loan" style="display:none;">
                         <div class="row">
                             <div class="col-md-6 mb-3"><label class="form-label fw-bold mandatory-label">Email</label><input type="email" id="m_email" class="form-control"></div>
@@ -183,16 +187,14 @@
                         </div>
                     </div>
 
-                    <!-- Stock Details (Mandatory only for In Stock) -->
                     <div id="group_stock" class="row" style="display:none;">
                         <div class="col-6 mb-3"><label class="form-label fw-bold mandatory-label">Purchase Date</label><input type="date" id="m_purchase" class="form-control"></div>
                         <div class="col-6 mb-3"><label class="form-label fw-bold mandatory-label">End of Cycle</label><input type="date" id="m_end" class="form-control"></div>
                     </div>
 
-                    <!-- Consistently Optional Fields -->
                     <div class="mb-3">
                         <label class="form-label fw-bold">Notes (Optional)</label>
-                        <textarea id="m_notes" class="form-control" rows="2" placeholder="Add any details here..."></textarea>
+                        <textarea id="m_notes" class="form-control" rows="2" placeholder="Optional details..."></textarea>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">Photo (Optional)</label>
@@ -238,8 +240,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function toggleUI() {
     const status = document.querySelector('input[name="status"]:checked').value;
+    const device = document.getElementById('m_device').value;
     const dept = document.getElementById('m_dept').value;
 
+    document.getElementById('group_other_device').style.display = (device === 'Other') ? 'block' : 'none';
     document.getElementById('group_other_dept').style.display = (dept === 'Other') ? 'block' : 'none';
     document.getElementById('group_loan').style.display = (status === 'Loaned') ? 'block' : 'none';
     document.getElementById('group_stock').style.display = (status === 'In Stock') ? 'flex' : 'none';
@@ -255,7 +259,7 @@ const toBase64 = f => new Promise((res, rej) => {
 
 async function confirmSetup() {
     const status = document.querySelector('input[name="status"]:checked').value;
-    const device = document.getElementById('m_device').value;
+    let device = document.getElementById('m_device').value;
     const user = document.getElementById('m_user').value;
     const empId = document.getElementById('m_emp_id').value;
     const email = document.getElementById('m_email').value;
@@ -267,23 +271,22 @@ async function confirmSetup() {
     let dept = document.getElementById('m_dept').value;
 
     // MANDATORY CHECKS
-    if (!user || !empId) return alert("Employee Name and ID are mandatory for all transactions.");
-    if (!device) return alert("Device Type is mandatory.");
+    if (!user || !empId) return alert("Employee Name and ID are mandatory.");
+    
+    if (device === 'Other') {
+        device = document.getElementById('m_other_device').value;
+        if (!device) return alert("Please specify the device type.");
+    } else if (!device) {
+        return alert("Device Type is mandatory.");
+    }
     
     if (dept === 'Other') {
         dept = document.getElementById('m_other_dept').value;
         if (!dept) return alert("Please specify the department.");
     }
 
-    // CONDITIONAL MANDATORY (In Stock Only)
-    if (status === 'In Stock' && (!purchase || !end)) {
-        return alert("Purchase Date and End of Cycle are mandatory for 'In Stock' status.");
-    }
-
-    // CONDITIONAL MANDATORY (Loaned Only)
-    if (status === 'Loaned' && (!email || !date)) {
-        return alert("Email and Return Date are mandatory for Loans.");
-    }
+    if (status === 'In Stock' && (!purchase || !end)) return alert("Purchase Date and End of Cycle are mandatory for Stock.");
+    if (status === 'Loaned' && (!email || !date)) return alert("Email and Return Date are mandatory for Loans.");
 
     session = {
         user, empId, dept, status, device, email, date, notes, purchase, end,
@@ -307,7 +310,6 @@ function startUI() {
 
     if (!scanner) {
         scanner = new Html5Qrcode("reader");
-        // SENSITIVE: 30 FPS for fast detection
         scanner.start({ facingMode: "environment" }, { fps: 30, qrbox: 250 }, (text) => {
             document.getElementById(activeFieldId).value = text;
             if (activeFieldId === 'scan_serial') {
