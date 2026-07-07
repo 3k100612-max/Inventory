@@ -35,7 +35,6 @@ class InventoryScan(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
 def init_db():
-    """Initializes the database. Ensures tables and columns exist on startup."""
     with app.app_context():
         try:
             db.create_all()
@@ -46,43 +45,23 @@ def init_db():
                     db.session.commit()
                 except Exception:
                     db.session.rollback()
-            print("Database initialization completed.")
         except Exception as e:
-            print(f"Critical DB Init Error: {e}", file=sys.stderr)
+            print(f"Init Error: {e}", file=sys.stderr)
 
-# Run initialization immediately (essential for Gunicorn/Production)
 init_db()
-
-def run_global_maintenance():
-    """Flags overdue items safely."""
-    try:
-        today = datetime.now().date()
-        InventoryScan.query.filter(
-            InventoryScan.status == 'Loaned',
-            InventoryScan.return_date < today,
-            InventoryScan.is_flagged == False
-        ).update({InventoryScan.is_flagged: True}, synchronize_session=False)
-        db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-        print(f"Maintenance Error: {e}", file=sys.stderr)
 
 @app.route('/')
 def index():
-    try:
-        run_global_maintenance()
-        recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(100).all()
-        return render_template('index.html', scans=recent_scans)
-    except Exception as e:
-        return f"Database connectivity error: {str(e)}", 500
+    recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(100).all()
+    return render_template('index.html', scans=recent_scans)
 
 @app.route('/scanned', methods=['POST'])
 def scanned():
     data = request.json
-    if not data or not data.get("code"):
-        return jsonify({"status": "error", "message": "Missing Serial Number"}), 400
-    
+    code = data.get("code")
+    status = data.get("status")
     r_date_str = data.get("return_date")
+    
     r_date = None
     if r_date_str and r_date_str.strip():
         try:
@@ -90,9 +69,6 @@ def scanned():
         except: r_date = None
     
     try:
-        code = data.get("code")
-        status = data.get("status")
-        
         repair_count = InventoryScan.query.filter_by(code=code, status='Repair').count()
         flag_it = False
         if status == 'Repair' and repair_count >= 2:
@@ -115,7 +91,14 @@ def scanned():
         )
         db.session.add(new_scan)
         db.session.commit()
-        return jsonify({"status": "success", "is_flagged": flag_it})
+        
+        # Return the data so the frontend can update the table locally
+        return jsonify({
+            "status": "success", 
+            "id": new_scan.id,
+            "is_flagged": flag_it,
+            "time": new_scan.timestamp.strftime('%H:%M')
+        })
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -124,16 +107,13 @@ def scanned():
 def delete_scans():
     data = request.json
     ids = data.get('ids', [])
-    if not ids or not isinstance(ids, list):
-        return jsonify({"status": "error", "message": "No items selected"}), 400
     try:
         InventoryScan.query.filter(InventoryScan.id.in_(ids)).delete(synchronize_session=False)
         db.session.commit()
-        return jsonify({"status": "success", "deleted_count": len(ids)})
+        return jsonify({"status": "success"})
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 8506))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=8506)
