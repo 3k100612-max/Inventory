@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inventory Control Pro</title>
+    <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- QR/Barcode Scanner Library -->
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body { background-color: #f4f7f6; padding: 20px; font-family: 'Segoe UI', sans-serif; }
@@ -19,77 +21,89 @@
 </head>
 <body>
 
-<div id="save_toast" class="alert alert-success shadow">✅ Record Saved!</div>
+<!-- Success Feedback Toast -->
+<div id="save_toast" class="alert alert-success shadow">✅ Record Saved Successfully!</div>
 
 <div class="container">
+    <!-- HEADER: Login Aware -->
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="fw-bold text-dark">Inventory Control</h2>
-        <button class="btn btn-outline-secondary btn-sm" onclick="location.reload()">🔄 Sync All</button>
+        <div>
+            <h2 class="fw-bold text-dark mb-0">Inventory Control</h2>
+            <span class="small text-muted">System Administrator: <strong>{{ user.username }}</strong></span>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="/logout" class="btn btn-outline-danger btn-sm fw-bold">Logout</a>
+            <button class="btn btn-outline-secondary btn-sm" onclick="location.reload()">🔄 Sync Data</button>
+        </div>
     </div>
 
-    <!-- SESSION INFO -->
+    <!-- ACTIVE SESSION BAR -->
     <div id="session_info" class="session-info-bar card shadow-sm">
         <div class="row align-items-center">
             <div class="col-md-8">
-                <h5 class="mb-1">Employee: <span id="ui_user" class="text-primary"></span> (<span id="ui_empid"></span>)</h5>
+                <h5 class="mb-1">Active Session: <span id="ui_user" class="text-primary"></span> (<span id="ui_empid"></span>)</h5>
                 <div class="d-flex gap-2 flex-wrap">
-                    <span id="ui_mode" class="badge bg-dark"></span>
                     <span id="ui_status" class="badge bg-primary"></span>
                     <span id="ui_dept" class="badge bg-secondary"></span>
+                    <span id="ui_device" class="badge bg-dark"></span>
                 </div>
             </div>
             <div class="col-md-4 text-end">
-                <button class="btn btn-sm btn-danger" onclick="finishSession()">End Session</button>
+                <button class="btn btn-sm btn-danger fw-bold" onclick="location.reload()">End Session</button>
             </div>
         </div>
     </div>
 
-    <!-- SCANNER SECTION -->
+    <!-- SCANNER VIEW -->
     <div id="scanner_section" style="display:none;">
         <div class="card p-3">
             <div id="reader-container"><div id="reader"></div></div>
             <div class="row mt-3 g-2">
                 <div class="col-md-4">
                     <label class="small fw-bold text-primary">SERIAL (CAPTURED)</label>
-                    <input type="text" id="scan_serial" class="form-control active-scan-field" placeholder="Waiting..." readonly>
+                    <input type="text" id="scan_serial" class="form-control active-scan-field" placeholder="Scan Serial..." readonly>
                 </div>
                 <div class="col-md-4">
-                    <label class="small fw-bold">IMEI</label>
-                    <input type="text" id="scan_imei" class="form-control" placeholder="Optional" readonly>
+                    <label class="small fw-bold">IMEI (OPTIONAL)</label>
+                    <input type="text" id="scan_imei" class="form-control" placeholder="Not Scanned" readonly>
                 </div>
                 <div class="col-md-4">
-                    <label class="small fw-bold">MAC</label>
-                    <input type="text" id="scan_mac" class="form-control" placeholder="Optional" readonly>
+                    <label class="small fw-bold">MAC (OPTIONAL)</label>
+                    <input type="text" id="scan_mac" class="form-control" placeholder="Not Scanned" readonly>
                 </div>
             </div>
-            <button id="btn_manual_save" class="btn btn-success btn-lg w-100 mt-3 fw-bold" onclick="saveData()" disabled>SAVE RECORD</button>
+            <button id="btn_manual_save" class="btn btn-success btn-lg w-100 mt-3 fw-bold shadow-sm" onclick="saveData()" disabled>SAVE TO DATABASE</button>
         </div>
     </div>
 
-    <!-- START SCREEN -->
+    <!-- INITIAL START SCREEN -->
     <div id="start_section" class="text-center py-5">
-        <div class="card p-5">
-            <h3>Ready to Scan?</h3>
-            <button class="btn btn-primary btn-lg mt-3" data-bs-toggle="modal" data-bs-target="#setupModal">Start New Session</button>
+        <div class="card p-5 border-0 shadow-sm">
+            <div class="mb-4">
+                <div class="display-1 text-primary">📦</div>
+                <h3 class="mt-3 fw-bold">Ready to Start?</h3>
+                <p class="text-muted">Set up your session parameters to begin scanning.</p>
+            </div>
+            <button class="btn btn-primary btn-lg px-5 fw-bold shadow" data-bs-toggle="modal" data-bs-target="#setupModal">Start New Session</button>
         </div>
     </div>
 
-    <!-- LIVE LOG -->
+    <!-- HISTORY LOG -->
     <div class="card p-4">
-        <h5 class="mb-3">Live Activity Log</h5>
+        <h5 class="mb-3 fw-bold">Recent Activity</h5>
         <div class="table-responsive">
             <table class="table table-hover align-middle">
                 <thead class="table-light">
                     <tr><th>Time</th><th>Identifiers</th><th>Status</th><th>Employee</th><th>Action</th></tr>
                 </thead>
                 <tbody id="history_body">
-                    {% for scan in scans %}
-                    <tr id="row-{{ scan.id }}">
-                        <td class="small text-muted">{{ scan.timestamp.strftime('%H:%M') }}</td>
-                        <td><div class="fw-bold">{{ scan.code }}</div><div class="small text-muted">{{ scan.device_type }}</div></td>
-                        <td><span class="badge rounded-pill bg-secondary status-badge">{{ scan.status }}</span></td>
-                        <td>{{ scan.person_name }} ({{ scan.employee_id }})</td>
-                        <td><button class="btn btn-sm text-danger" onclick="deleteSingle({{ scan.id }})">🗑️</button></td>
+                    {% for s in scans %}
+                    <tr id="row-{{ s.id }}">
+                        <td class="small text-muted">{{ s.timestamp.strftime('%H:%M') }}</td>
+                        <td><div class="fw-bold">{{ s.code }}</div><div class="small text-muted">{{ s.device_type }}</div></td>
+                        <td><span class="badge rounded-pill bg-secondary status-badge">{{ s.status }}</span></td>
+                        <td>{{ s.person_name }} ({{ s.employee_id }})</td>
+                        <td><button class="btn btn-sm text-danger" onclick="deleteSingle({{ s.id }})">🗑️</button></td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -103,132 +117,119 @@
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title">Session Setup</h5>
+                <h5 class="modal-title fw-bold">Session Configuration</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-4">
-                <!-- UNIVERSAL MANDATORY SECTION -->
-                <div class="row bg-light p-3 rounded mb-4">
+                <!-- MANDATORY EMPLOYEE INFO -->
+                <div class="row bg-light p-3 rounded mb-4 border">
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold mandatory-label">Employee Name</label>
-                        <input type="text" id="m_user" class="form-control border-primary" placeholder="Full Name">
+                        <input type="text" id="m_user" class="form-control" placeholder="Full Name">
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold mandatory-label">Employee ID</label>
-                        <input type="text" id="m_emp_id" class="form-control border-primary" placeholder="ID Number">
+                        <input type="text" id="m_emp_id" class="form-control" placeholder="ID Number">
                     </div>
                 </div>
 
                 <div class="row">
+                    <!-- DEVICE SELECTION -->
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold mandatory-label">Device Type</label>
                         <select id="m_device" class="form-select" onchange="toggleUI()">
-                            <option value="">-- Select --</option>
+                            <option value="">-- Select Device --</option>
                             <option value="Laptop">Laptop</option>
                             <option value="Mobile">Mobile</option>
                             <option value="Monitor">Monitor</option>
-                            <option value="Docking">Docking</option>
                             <option value="Printer">Printer</option>
-                            <option value="Other">Other</option>
+                            <option value="Other">Other (Specify Below)</option>
                         </select>
                     </div>
                     <div class="col-md-6 mb-3" id="group_other_device" style="display:none;">
-                        <label class="form-label fw-bold mandatory-label">Specify Device Type</label>
-                        <input type="text" id="m_other_device" class="form-control border-primary">
+                        <label class="form-label fw-bold mandatory-label">Specify Device</label>
+                        <input type="text" id="m_other_device" class="form-control border-primary" placeholder="e.g. Scanner, Tablet">
                     </div>
                 </div>
 
                 <div class="row">
+                    <!-- DEPARTMENT SELECTION -->
                     <div class="col-md-6 mb-3">
-                        <label class="form-label fw-bold">Department</label>
+                        <label class="form-label fw-bold mandatory-label">Department</label>
                         <select id="m_dept" class="form-select" onchange="toggleUI()">
                             <option value="IT">IT</option>
                             <option value="FINANCE">FINANCE</option>
                             <option value="PROCUREMENT">PROCUREMENT</option>
-                            <option value="OPERATION">OPERATION</option>
-                            <option value="FACILITIES">FACILITIES</option>
-                            <option value="Other">Other</option>
+                            <option value="Other">Other (Specify Below)</option>
                         </select>
                     </div>
                     <div class="col-md-6 mb-3" id="group_other_dept" style="display:none;">
                         <label class="form-label fw-bold mandatory-label">Specify Dept</label>
-                        <input type="text" id="m_other_dept" class="form-control">
+                        <input type="text" id="m_other_dept" class="form-control border-primary">
                     </div>
                 </div>
 
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Status Update</label>
-                    <div class="row g-2">
-                        <div class="col-4"><input type="radio" class="btn-check" name="status" id="st1" value="In Stock" checked onchange="toggleUI()"><label class="btn btn-sm btn-outline-secondary w-100" for="st1">In Stock</label></div>
-                        <div class="col-4"><input type="radio" class="btn-check" name="status" id="st2" value="Loaned" onchange="toggleUI()"><label class="btn btn-sm btn-outline-secondary w-100" for="st2">Loaned</label></div>
-                        <div class="col-4"><input type="radio" class="btn-check" name="status" id="st3" value="Repair" onchange="toggleUI()"><label class="btn btn-sm btn-outline-secondary w-100" for="st3">Repair</label></div>
-                        <div class="col-4"><input type="radio" class="btn-check" name="status" id="st4" value="In Use" onchange="toggleUI()"><label class="btn btn-sm btn-outline-secondary w-100" for="st4">In Use</label></div>
-                        <div class="col-4"><input type="radio" class="btn-check" name="status" id="st5" value="Retired" onchange="toggleUI()"><label class="btn btn-sm btn-outline-secondary w-100" for="st5">Retired</label></div>
+                <div class="mb-4">
+                    <label class="form-label fw-bold mandatory-label">Transaction Status</label>
+                    <div class="btn-group w-100" role="group">
+                        <input type="radio" class="btn-check" name="status" id="st1" value="In Stock" checked onchange="toggleUI()">
+                        <label class="btn btn-outline-secondary" for="st1">In Stock</label>
+                        <input type="radio" class="btn-check" name="status" id="st2" value="Loaned" onchange="toggleUI()">
+                        <label class="btn btn-outline-secondary" for="st2">Loaned</label>
+                        <input type="radio" class="btn-check" name="status" id="st3" value="In Use" onchange="toggleUI()">
+                        <label class="btn btn-outline-secondary" for="st3">In Use</label>
                     </div>
                 </div>
 
                 <hr>
 
+                <!-- DYNAMIC STATUS FIELDS -->
                 <div id="dynamic_fields">
-                    <!-- Loan -->
-                    <div id="group_loan" style="display:none;">
-                        <div class="row">
-                            <div class="col-md-6 mb-3"><label class="form-label fw-bold mandatory-label">Email</label><input type="email" id="m_email" class="form-control" placeholder="user@domain.com"></div>
-                            <div class="col-md-6 mb-3"><label class="form-label fw-bold mandatory-label">Return Date</label><input type="date" id="m_date" class="form-control"></div>
-                        </div>
-                    </div>
-
-                    <!-- Stock -->
+                    <!-- Stock Dates -->
                     <div id="group_stock" class="row" style="display:none;">
-                        <div class="col-6 mb-3"><label class="form-label fw-bold mandatory-label">Purchase Date</label><input type="date" id="m_purchase" class="form-control"></div>
-                        <div class="col-6 mb-3"><label class="form-label fw-bold mandatory-label">End of Cycle</label><input type="date" id="m_end" class="form-control"></div>
+                        <div class="col-md-6 mb-3"><label class="form-label fw-bold mandatory-label">Purchase Date</label><input type="date" id="m_purchase" class="form-control"></div>
+                        <div class="col-md-6 mb-3"><label class="form-label fw-bold mandatory-label">End of Cycle</label><input type="date" id="m_end" class="form-control"></div>
                     </div>
 
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Notes (Optional)</label>
-                        <textarea id="m_notes" class="form-control" rows="2"></textarea>
+                    <!-- Loan Info -->
+                    <div id="group_loan" class="row" style="display:none;">
+                        <div class="col-md-6 mb-3"><label class="form-label fw-bold mandatory-label">Email</label><input type="email" id="m_email" class="form-control" placeholder="user@domain.com"></div>
+                        <div class="col-md-6 mb-3"><label class="form-label fw-bold mandatory-label">Return Date</label><input type="date" id="m_date" class="form-control"></div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Photo (Optional)</label>
-                        <input type="file" id="m_image" class="form-control" accept="image/*">
-                    </div>
-                </div>
 
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Scan Mode</label>
-                    <div class="btn-group w-100">
-                        <input type="radio" class="btn-check" name="mode" id="mode1" value="single" checked>
-                        <label class="btn btn-outline-primary" for="mode1">Single Scan</label>
-                        <input type="radio" class="btn-check" name="mode" id="mode2" value="multiple">
-                        <label class="btn btn-outline-primary" for="mode2">Bulk Scan</label>
-                    </div>
+                    <!-- Optional Fields -->
+                    <div class="mb-3"><label class="form-label fw-bold">Notes (Optional)</label><textarea id="m_notes" class="form-control" rows="2" placeholder="Any additional details..."></textarea></div>
+                    <div class="mb-3"><label class="form-label fw-bold">Photo (Optional)</label><input type="file" id="m_image" class="form-control" accept="image/*"></div>
                 </div>
             </div>
             <div class="modal-footer border-0">
-                <button class="btn btn-primary w-100 py-3 fw-bold" onclick="confirmSetup()">CONFIRM & START</button>
+                <button class="btn btn-primary w-100 py-3 fw-bold shadow" onclick="confirmSetup()">START SCANNING SESSION</button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- PROMPT MODAL -->
+<!-- PROMPT MODAL: Capture IMEI/MAC -->
 <div class="modal fade" id="promptModal" data-bs-backdrop="static" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-dark text-white"><h5 class="modal-title">Serial Captured</h5></div>
             <div class="modal-body p-4 text-center">
-                <p class="mb-4">Scan optional identifiers?</p>
+                <p class="mb-4">Do you want to scan additional identifiers?</p>
                 <div class="d-grid gap-2">
-                    <button class="btn btn-primary py-2" onclick="setNextField('scan_imei')">Scan IMEI</button>
-                    <button class="btn btn-info py-2" onclick="setNextField('scan_mac')">Scan MAC Address</button>
-                    <hr><button class="btn btn-success py-3 fw-bold" onclick="saveData()">No, Save & Continue</button>
+                    <button class="btn btn-primary py-2 fw-bold" onclick="setNextField('scan_imei')">Scan IMEI</button>
+                    <button class="btn btn-info py-2 fw-bold" onclick="setNextField('scan_mac')">Scan MAC Address</button>
+                    <hr>
+                    <button class="btn btn-success py-3 fw-bold shadow-sm" onclick="saveData()">No, Save Record Now</button>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
+<!-- Bootstrap JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
 <script>
 let scanner;
 let activeFieldId = 'scan_serial';
@@ -240,6 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
     toggleUI();
 });
 
+// UI Logic: Show/Hide fields based on selections
 function toggleUI() {
     const status = document.querySelector('input[name="status"]:checked').value;
     const device = document.getElementById('m_device').value;
@@ -247,13 +249,12 @@ function toggleUI() {
 
     document.getElementById('group_other_device').style.display = (device === 'Other') ? 'block' : 'none';
     document.getElementById('group_other_dept').style.display = (dept === 'Other') ? 'block' : 'none';
-    document.getElementById('group_loan').style.display = (status === 'Loaned') ? 'block' : 'none';
+    document.getElementById('group_loan').style.display = (status === 'Loaned') ? 'flex' : 'none';
     document.getElementById('group_stock').style.display = (status === 'In Stock') ? 'flex' : 'none';
 }
 
 function validateEmail(email) {
-    const re = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    return re.test(String(email).toLowerCase());
+    return /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(String(email).toLowerCase());
 }
 
 const toBase64 = f => new Promise((res, rej) => {
@@ -264,6 +265,7 @@ const toBase64 = f => new Promise((res, rej) => {
     r.onerror = e => rej(e);
 });
 
+// Validation and Session Start
 async function confirmSetup() {
     const status = document.querySelector('input[name="status"]:checked').value;
     let device = document.getElementById('m_device').value;
@@ -277,21 +279,23 @@ async function confirmSetup() {
     const imgFile = document.getElementById('m_image').files[0];
     let dept = document.getElementById('m_dept').value;
 
-    // MANDATORY CHECKS
+    // 1. Universal Mandatories
     if (!user || !empId) return alert("Employee Name and ID are mandatory.");
     
+    // 2. Device Other Logic
     if (device === 'Other') {
         device = document.getElementById('m_other_device').value;
         if (!device) return alert("Please specify the device type.");
     } else if (!device) return alert("Device Type is mandatory.");
     
+    // 3. Dept Other Logic
     if (dept === 'Other') {
         dept = document.getElementById('m_other_dept').value;
         if (!dept) return alert("Please specify the department.");
     }
 
-    if (status === 'In Stock' && (!purchase || !end)) return alert("Purchase Date and End of Cycle are mandatory for Stock.");
-    
+    // 4. Status Specific Mandatories
+    if (status === 'In Stock' && (!purchase || !end)) return alert("Purchase Date and End Cycle are mandatory for Stock.");
     if (status === 'Loaned') {
         if (!email || !date) return alert("Email and Return Date are mandatory for Loans.");
         if (!validateEmail(email)) return alert("Please enter a valid email address.");
@@ -299,27 +303,28 @@ async function confirmSetup() {
 
     session = {
         user, empId, dept, status, device, email, date, notes, purchase, end,
-        mode: document.querySelector('input[name="mode"]:checked').value,
         image_data: await toBase64(imgFile)
     };
 
     bootstrap.Modal.getInstance(document.getElementById('setupModal')).hide();
-    startUI();
+    startScanner();
 }
 
-function startUI() {
+function startScanner() {
     document.getElementById('start_section').style.display = 'none';
     document.getElementById('session_info').style.display = 'block';
     document.getElementById('scanner_section').style.display = 'block';
+    
+    // Injection-safe UI update
     document.getElementById('ui_user').textContent = session.user;
     document.getElementById('ui_empid').textContent = session.empId;
-    document.getElementById('ui_mode').textContent = session.mode.toUpperCase();
     document.getElementById('ui_status').textContent = session.status;
     document.getElementById('ui_dept').textContent = session.dept;
+    document.getElementById('ui_device').textContent = session.device;
 
     if (!scanner) {
         scanner = new Html5Qrcode("reader");
-        // SENSITIVE: 30 FPS for fast detection
+        // SENSITIVE: 30 FPS for high performance
         scanner.start({ facingMode: "environment" }, { fps: 30, qrbox: 250 }, (text) => {
             document.getElementById(activeFieldId).value = text;
             if (activeFieldId === 'scan_serial') {
@@ -327,33 +332,38 @@ function startUI() {
                 document.getElementById('btn_manual_save').disabled = false;
                 promptModal.show();
             }
-        });
+        }).catch(err => alert("Camera error: " + err));
     }
 }
 
 function saveData() {
     promptModal.hide();
-    const code = document.getElementById('scan_serial').value;
     const payload = {
-        code, status: session.status, device_type: session.device, department: session.dept,
-        person_name: session.user, employee_id: session.empId, email: session.email,
-        return_date: session.date, notes: session.notes, purchase_date: session.purchase,
-        end_of_cycle: session.end, image_data: session.image_data,
+        ...session,
+        code: document.getElementById('scan_serial').value,
         imei: document.getElementById('scan_imei').value,
-        mac_address: document.getElementById('scan_mac').value
+        mac_address: document.getElementById('scan_mac').value,
+        device_type: session.device // Ensure custom "Other" device is sent
     };
 
-    fetch('/scanned', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    fetch('/scanned', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(payload) 
+    })
     .then(r => r.json()).then(d => {
         if (d.status === 'success') {
             document.getElementById('save_toast').style.display = 'block';
             setTimeout(() => document.getElementById('save_toast').style.display = 'none', 2000);
             addTableRow(payload, d);
-            if (session.mode === 'multiple') resetFields(); else finishSession();
-        } else alert("Error: " + d.message);
+            resetScanner();
+        } else {
+            alert("Error: " + d.message);
+        }
     });
 }
 
+// Injection-safe table update
 function addTableRow(item, meta) {
     const tbody = document.getElementById('history_body');
     const row = document.createElement('tr');
@@ -363,21 +373,21 @@ function addTableRow(item, meta) {
         { text: meta.time, class: "small text-muted" },
         { html: `<div class="fw-bold">${item.code}</div><div class="small text-muted">${item.device_type}</div>` },
         { html: `<span class="badge rounded-pill bg-secondary status-badge">${item.status}</span>` },
-        { text: `${item.person_name} (${item.employee_id})` },
+        { text: `${item.person_name || item.user} (${item.employee_id || item.empId})` },
         { html: `<button class="btn btn-sm text-danger" onclick="deleteSingle(${meta.id})">🗑️</button>` }
     ];
 
     cells.forEach(c => {
         const td = document.createElement('td');
         if (c.class) td.className = c.class;
-        if (c.html) td.innerHTML = c.html; // InnerHTML used only for hardcoded app-generated HTML
-        else td.textContent = c.text; // TextContent used for all user-provided data (Injection Security)
+        if (c.html) td.innerHTML = c.html; // Only for internally trusted HTML
+        else td.textContent = c.text; // TextContent used for all user-provided strings
         row.appendChild(td);
     });
     tbody.prepend(row);
 }
 
-function resetFields() {
+function resetScanner() {
     document.getElementById('scan_serial').value = '';
     document.getElementById('scan_imei').value = '';
     document.getElementById('scan_mac').value = '';
@@ -393,8 +403,15 @@ function setNextField(id) {
     if (scanner) scanner.resume();
 }
 
-function finishSession() { if (scanner) scanner.stop().finally(() => location.reload()); else location.reload(); }
-function deleteSingle(id) { if (confirm("Delete?")) fetch('/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [id] }) }).then(() => location.reload()); }
+function deleteSingle(id) {
+    if (confirm("Permanently delete this record?")) {
+        fetch('/delete', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ ids: [id] }) 
+        }).then(() => document.getElementById(`row-${id}`).remove());
+    }
+}
 </script>
 </body>
 </html>
