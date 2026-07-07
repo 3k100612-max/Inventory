@@ -3,183 +3,170 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enterprise Asset Management</title>
+    <title>Asset Management Pro</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        :root { --primary: #2c3e50; --danger: #e74c3c; --warning: #f1c40f; --success: #2ecc71; }
-        body { background: #f4f7f6; font-family: 'Segoe UI', sans-serif; }
-        .stat-card { border: none; border-radius: 12px; transition: 0.3s; }
-        .stat-card:hover { transform: translateY(-5px); }
-        .overdue-row { background-color: #fff5f5 !important; border-left: 5px solid var(--danger); }
-        .high-maintenance { color: var(--danger); font-weight: bold; animation: blink 2s infinite; }
-        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-        #reader { width: 100%; border-radius: 15px; overflow: hidden; }
-        .status-pill { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
+        body { background-color: #f8f9fa; font-family: 'Inter', sans-serif; }
+        .overdue-row { background-color: #fff5f5 !important; border-left: 5px solid #dc3545; }
+        .status-loan { color: #0dcaf0; font-weight: bold; }
+        .status-repair { color: #ffc107; font-weight: bold; }
+        .scanner-active { border: 3px solid #0d6efd; border-radius: 15px; }
+        #feedback_toast { position: fixed; top: 20px; right: 20px; z-index: 9999; display: none; }
     </style>
 </head>
 <body>
 
-<div class="container-fluid py-4">
-    <!-- DASHBOARD HEADER -->
-    <div class="row g-3 mb-4">
-        <div class="col-md-2">
-            <div class="card stat-card bg-primary text-white p-3">
-                <small>Total Assets</small>
-                <h3>{{ stats.total }}</h3>
-            </div>
-        </div>
-        <div class="col-md-2">
-            <div class="card stat-card bg-info text-white p-3">
-                <small>On Loan</small>
-                <h3>{{ stats.loaned }}</h3>
-            </div>
-        </div>
-        <div class="col-md-2">
-            <div class="card stat-card bg-danger text-white p-3">
-                <small>Overdue</small>
-                <h3>{{ stats.overdue }}</h3>
-            </div>
-        </div>
-        <div class="col-md-2">
-            <div class="card stat-card bg-warning text-dark p-3">
-                <small>High Maint. 🚩</small>
-                <h3>{{ stats.high_maintenance }}</h3>
-            </div>
-        </div>
-        <div class="col-md-4 text-end">
-            <button class="btn btn-dark shadow" data-bs-toggle="modal" data-bs-target="#scanModal">📸 Start Scanning</button>
-            <a href="/export" class="btn btn-outline-secondary shadow">📊 Export CSV</a>
+<div id="feedback_toast" class="alert alert-success shadow-lg">✅ Scan Successful</div>
+
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold">Asset Control Center</h2>
+        <div>
+            <a href="/export" class="btn btn-outline-success btn-sm">📊 Export CSV</a>
+            <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#setupModal">+ New Session</button>
         </div>
     </div>
 
-    <!-- MAIN ASSET TABLE -->
-    <div class="card shadow-sm border-0">
-        <div class="card-body">
-            <table class="table table-hover align-middle">
-                <thead>
-                    <tr>
-                        <th>Asset / Serial</th>
-                        <th>Type / Dept</th>
-                        <th>Status</th>
-                        <th>Health Score</th>
-                        <th>Current User</th>
-                        <th>Warranty</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for asset in assets %}
-                    <tr class="{% if asset.is_overdue %}overdue-row{% endif %}">
-                        <td>
-                            <div class="fw-bold">{{ asset.asset_tag or 'No Tag' }}</div>
-                            <small class="text-muted">{{ asset.serial_number }}</small>
-                        </td>
-                        <td>
-                            <div>{{ asset.device_type_other or asset.device_type }}</div>
-                            <small class="badge bg-light text-dark">{{ asset.department }}</small>
-                        </td>
-                        <td>
-                            <span class="badge status-pill {% if asset.status == 'Loan' %}bg-info{% elif asset.status == 'Repair' %}bg-warning{% elif asset.status == 'In Stock' %}bg-success{% else %}bg-secondary{% endif %}">
-                                {{ asset.status }}
-                            </span>
-                            {% if asset.is_overdue %}<span class="badge bg-danger">OVERDUE</span>{% endif %}
-                        </td>
-                        <td>
-                            {% if asset.repair_count >= 3 %}
-                                <span class="high-maintenance">🚩 RED ({{ asset.repair_count }} Rep)</span>
-                            {% elif asset.repair_count == 2 %}
-                                <span class="text-warning fw-bold">🟡 YELLOW</span>
-                            {% else %}
-                                <span class="text-success fw-bold">🟢 HEALTHY</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if asset.status == 'Loan' %}
-                                <div class="small fw-bold">{{ asset.borrower_name }}</div>
-                                <div class="small text-muted">{{ asset.expected_return_date }}</div>
-                            {% else %}-{% endif %}
-                        </td>
-                        <td><small>{{ asset.warranty_expiry or 'N/A' }}</small></td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+    <!-- SESSION INFO -->
+    <div id="session_bar" class="card p-3 mb-4 shadow-sm border-0" style="display:none;">
+        <div class="row align-items-center">
+            <div class="col-md-9">
+                <span id="label_mode" class="badge bg-dark"></span>
+                <span id="label_type" class="badge bg-primary"></span>
+                <span id="label_dept" class="badge bg-secondary"></span>
+                <span id="label_status" class="badge bg-info text-dark"></span>
+            </div>
+            <div class="col-md-3 text-end">
+                <button class="btn btn-sm btn-danger" onclick="location.reload()">End Session</button>
+            </div>
         </div>
+    </div>
+
+    <!-- SCANNER UI -->
+    <div id="scanner_ui" style="display:none;" class="mb-4">
+        <div class="card p-3 shadow-sm">
+            <div id="reader" style="width:100%;" class="scanner-active"></div>
+            <div class="row mt-3 g-2">
+                <div class="col-md-4"><input type="text" id="in_serial" class="form-control" placeholder="Serial (Required)" readonly></div>
+                <div class="col-md-4"><input type="text" id="in_imei" class="form-control" placeholder="IMEI"></div>
+                <div class="col-md-4"><input type="text" id="in_mac" class="form-control" placeholder="MAC Address"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TABLE -->
+    <div class="card shadow-sm border-0 p-3">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Asset</th>
+                    <th>Type / Dept</th>
+                    <th>Status</th>
+                    <th>Borrower / Due</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="log_body">
+                {% for scan in scans %}
+                <tr class="{% if scan.is_flagged %}overdue-row{% endif %}">
+                    <td>
+                        <div class="fw-bold">{{ scan.code }}</div>
+                        <small class="text-muted">ID: {{ scan.id }}</small>
+                    </td>
+                    <td>
+                        <div>{{ scan.device_type_other or scan.device_type }}</div>
+                        <small class="text-secondary">{{ scan.department_other or scan.department }}</small>
+                    </td>
+                    <td><span class="badge bg-light text-dark border">{{ scan.status }}</span></td>
+                    <td>
+                        {% if scan.status == 'Loan' %}
+                            <div class="small fw-bold">{{ scan.borrower_name }}</div>
+                            <div class="small {% if scan.is_flagged %}text-danger{% endif %}">{{ scan.expected_return_date }}</div>
+                        {% else %}-{% endif %}
+                    </td>
+                    <td><button class="btn btn-sm text-danger" onclick="deleteItem({{scan.id}})">🗑️</button></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
 </div>
 
-<!-- SCANNING MODAL (THE BRAIN) -->
-<div class="modal fade" id="scanModal" data-bs-backdrop="static" tabindex="-1">
+<!-- SETUP MODAL -->
+<div class="modal fade" id="setupModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
-        <div class="modal-content border-0 shadow-lg">
-            <div class="modal-header bg-dark text-white">
-                <h5 class="modal-title">Enterprise Scanner</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" onclick="stopScanner()"></button>
-            </div>
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white"><h5>Session Initialization</h5></div>
             <div class="modal-body">
-                <div id="reader"></div>
-                
-                <div id="workflow_ui" class="mt-4">
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">Asset Status *</label>
-                            <select id="f_status" class="form-select" onchange="toggleWorkflowFields()">
-                                <option value="In Stock">In Stock</option>
-                                <option value="In Use">In Use</option>
-                                <option value="Loan">Loan</option>
-                                <option value="Repair">Repair</option>
-                                <option value="Retired">Retired</option>
-                                <option value="Lost">Lost</option>
-                            </select>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">Department *</label>
-                            <select id="f_dept" class="form-select">
-                                <option value="IT">Information Technology</option>
-                                <option value="HR">Human Resources</option>
-                                <option value="Finance">Finance</option>
-                                <option value="Operations">Operations</option>
-                            </select>
-                        </div>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Device Type *</label>
+                        <select id="s_type" class="form-select" onchange="toggleOther('s_type', 's_type_other')">
+                            <option value="Laptop">Laptop</option>
+                            <option value="Desktop">Desktop</option>
+                            <option value="iPhone">iPhone</option>
+                            <option value="Monitor">Monitor</option>
+                            <option value="Other">Other</option>
+                        </select>
+                        <input type="text" id="s_type_other" class="form-control mt-2" style="display:none;" placeholder="Specify type...">
                     </div>
-
-                    <!-- LOAN FIELDS -->
-                    <div id="loan_fields" class="mt-3 p-3 bg-light rounded" style="display:none;">
-                        <h6>Loan Details</h6>
-                        <div class="row g-2">
-                            <div class="col-6"><input type="text" id="f_b_name" class="form-control" placeholder="Borrower Name"></div>
-                            <div class="col-6"><input type="email" id="f_b_email" class="form-control" placeholder="Email"></div>
-                            <div class="col-6"><input type="text" id="f_b_id" class="form-control" placeholder="Employee ID"></div>
-                            <div class="col-6"><input type="date" id="f_b_date" class="form-control" title="Return Date"></div>
-                        </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Department *</label>
+                        <select id="s_dept" class="form-select" onchange="toggleOther('s_dept', 's_dept_other')">
+                            <option value="IT">IT</option>
+                            <option value="HR">HR</option>
+                            <option value="Finance">Finance</option>
+                            <option value="Other">Other</option>
+                        </select>
+                        <input type="text" id="s_dept_other" class="form-control mt-2" style="display:none;" placeholder="Specify department...">
                     </div>
-
-                    <!-- DATA CAPTURE -->
-                    <div class="mt-3 border-top pt-3">
-                        <div class="row g-2">
-                            <div class="col-4"><input type="text" id="f_serial" class="form-control bg-warning-subtle fw-bold" placeholder="Serial No." readonly></div>
-                            <div class="col-4"><input type="text" id="f_imei" class="form-control" placeholder="IMEI (Opt)"></div>
-                            <div class="col-4"><input type="text" id="f_mac" class="form-control" placeholder="MAC (Opt)"></div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Status *</label>
+                        <select id="s_status" class="form-select" onchange="toggleLoanFields()">
+                            <option value="In Stock">In Stock</option>
+                            <option value="In Use">In Use</option>
+                            <option value="Loan">Loan</option>
+                            <option value="Repair">Repair</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Scan Mode</label>
+                        <div class="btn-group w-100">
+                            <input type="radio" class="btn-check" name="mode" id="m1" value="single" checked>
+                            <label class="btn btn-outline-primary" for="m1">Single</label>
+                            <input type="radio" class="btn-check" name="mode" id="m2" value="bulk">
+                            <label class="btn btn-outline-primary" for="m2">Bulk</label>
                         </div>
                     </div>
                 </div>
+
+                <div id="loan_fields" class="mt-4 p-3 bg-light rounded" style="display:none;">
+                    <h6 class="border-bottom pb-2">Borrower Details</h6>
+                    <div class="row g-2">
+                        <div class="col-md-6"><input type="text" id="s_b_name" class="form-control" placeholder="Name"></div>
+                        <div class="col-md-6"><input type="email" id="s_b_email" class="form-control" placeholder="Email"></div>
+                        <div class="col-md-6"><label class="small">Start Date</label><input type="date" id="s_b_start" class="form-control"></div>
+                        <div class="col-md-6"><label class="small">Return Date</label><input type="date" id="s_b_end" class="form-control"></div>
+                    </div>
+                </div>
             </div>
-            <div class="modal-footer">
-                <button class="btn btn-success btn-lg w-100" id="btn_save" onclick="saveAsset()" disabled>SAVE & CONTINUE</button>
-            </div>
+            <div class="modal-footer"><button class="btn btn-primary w-100" onclick="confirmSetup()">START SESSION</button></div>
         </div>
     </div>
 </div>
 
-<!-- SUCCESS PROMPT MODAL -->
-<div class="modal fade" id="confirmModal" tabindex="-1">
-    <div class="modal-dialog modal-sm modal-dialog-centered">
-        <div class="modal-content text-center p-4">
-            <h4 class="text-success">✅ Saved!</h4>
-            <p>Continue bulk scanning?</p>
-            <div class="d-flex gap-2">
-                <button class="btn btn-primary flex-fill" onclick="resetForNext()">YES</button>
-                <button class="btn btn-danger flex-fill" onclick="location.reload()">NO</button>
+<!-- BULK PROMPT MODAL -->
+<div class="modal fade" id="bulkModal" data-bs-backdrop="static" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body text-center p-4">
+                <div id="bulk_msg" class="h5 mb-4 text-success"></div>
+                <p>Do you want to continue bulk scanning?</p>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary flex-fill" onclick="continueBulk()">YES (Next Device)</button>
+                    <button class="btn btn-danger flex-fill" onclick="location.reload()">NO (End Session)</button>
+                </div>
             </div>
         </div>
     </div>
@@ -188,69 +175,104 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 let scanner;
-let currentStep = 'serial'; // serial -> imei -> mac
-let sessionData = {};
+let activeField = 'in_serial';
+let session = {};
+let bulkCount = 0;
 
-function toggleWorkflowFields() {
-    const status = document.getElementById('f_status').value;
-    document.getElementById('loan_fields').style.display = (status === 'Loan') ? 'block' : 'none';
+function toggleOther(selId, otherId) {
+    document.getElementById(otherId).style.display = (document.getElementById(selId).value === 'Other') ? 'block' : 'none';
+}
+
+function toggleLoanFields() {
+    document.getElementById('loan_fields').style.display = (document.getElementById('s_status').value === 'Loan') ? 'block' : 'none';
+}
+
+function confirmSetup() {
+    session = {
+        type: document.getElementById('s_type').value,
+        type_other: document.getElementById('s_type_other').value,
+        dept: document.getElementById('s_dept').value,
+        dept_other: document.getElementById('s_dept_other').value,
+        status: document.getElementById('s_status').value,
+        mode: document.querySelector('input[name="mode"]:checked').value,
+        b_name: document.getElementById('s_b_name').value,
+        b_email: document.getElementById('s_b_email').value,
+        b_start: document.getElementById('s_b_start').value,
+        b_end: document.getElementById('s_b_end').value
+    };
+
+    bootstrap.Modal.getInstance(document.getElementById('setupModal')).hide();
+    startScanner();
+    updateUI();
+}
+
+function updateUI() {
+    document.getElementById('session_bar').style.display = 'block';
+    document.getElementById('scanner_ui').style.display = 'block';
+    document.getElementById('label_mode').innerText = session.mode.toUpperCase();
+    document.getElementById('label_type').innerText = session.type;
+    document.getElementById('label_dept').innerText = session.dept;
+    document.getElementById('label_status').innerText = session.status;
 }
 
 function startScanner() {
     scanner = new Html5Qrcode("reader");
     scanner.start({ facingMode: "environment" }, { fps: 20, qrbox: 250 }, (text) => {
-        if (currentStep === 'serial') {
-            document.getElementById('f_serial').value = text;
-            currentStep = 'imei';
-            document.getElementById('f_imei').focus();
-            document.getElementById('btn_save').disabled = false;
-        } else if (currentStep === 'imei') {
-            document.getElementById('f_imei').value = text;
-            currentStep = 'mac';
-            document.getElementById('f_mac').focus();
-        } else if (currentStep === 'mac') {
-            document.getElementById('f_mac').value = text;
+        document.getElementById(activeField).value = text;
+        
+        if (activeField === 'in_serial') {
+            // Sequential workflow
+            activeField = 'in_imei';
+            document.getElementById('in_imei').focus();
+        } else if (activeField === 'in_imei') {
+            activeField = 'in_mac';
+            document.getElementById('in_mac').focus();
+        } else {
+            saveData();
         }
-        if (navigator.vibrate) navigator.vibrate(100);
     });
 }
 
-function saveAsset() {
-    const data = {
-        serial: document.getElementById('f_serial').value,
-        imei: document.getElementById('f_imei').value,
-        mac: document.getElementById('f_mac').value,
-        status: document.getElementById('f_status').value,
-        department: document.getElementById('f_dept').value,
-        borrower_name: document.getElementById('f_b_name').value,
-        borrower_email: document.getElementById('f_b_email').value,
-        borrower_id: document.getElementById('f_b_id').value,
-        return_date: document.getElementById('f_b_date').value
+function saveData() {
+    const payload = {
+        code: document.getElementById('in_serial').value,
+        imei: document.getElementById('in_imei').value,
+        mac_address: document.getElementById('in_mac').value,
+        device_type: session.type, device_type_other: session.type_other,
+        department: session.dept, department_other: session.dept_other,
+        status: session.status,
+        borrower_name: session.b_name, borrower_email: session.b_email,
+        loan_start: session.b_start, loan_end: session.b_end
     };
 
-    fetch('/api/scan', {
+    fetch('/scanned', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(data)
-    }).then(res => res.json()).then(res => {
-        if (res.status === 'success') {
-            new bootstrap.Modal(document.getElementById('confirmModal')).show();
+        body: JSON.stringify(payload)
+    }).then(() => {
+        bulkCount++;
+        showFeedback();
+        if (session.mode === 'bulk') {
+            document.getElementById('bulk_msg').innerText = `Device ${bulkCount} Saved Successfully.`;
+            new bootstrap.Modal(document.getElementById('bulkModal')).show();
+        } else {
+            location.reload();
         }
     });
 }
 
-function resetForNext() {
-    bootstrap.Modal.getInstance(document.getElementById('confirmModal')).hide();
-    document.getElementById('f_serial').value = '';
-    document.getElementById('f_imei').value = '';
-    document.getElementById('f_mac').value = '';
-    currentStep = 'serial';
+function continueBulk() {
+    bootstrap.Modal.getInstance(document.getElementById('bulkModal')).hide();
+    document.getElementById('in_serial').value = '';
+    document.getElementById('in_imei').value = '';
+    document.getElementById('in_mac').value = '';
+    activeField = 'in_serial';
 }
 
-document.getElementById('scanModal').addEventListener('shown.bs.modal', startScanner);
-
-function stopScanner() {
-    if (scanner) scanner.stop();
+function showFeedback() {
+    const t = document.getElementById('feedback_toast');
+    t.style.display = 'block';
+    setTimeout(() => t.style.display = 'none', 2000);
 }
 </script>
 </body>
