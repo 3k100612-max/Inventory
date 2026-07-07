@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inventory Monitor Pro</title>
+    <title>Inventory Control Pro</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
@@ -14,7 +14,7 @@
         .active-scan-field { border: 3px solid #0d6efd !important; background-color: #e7f1ff !important; }
         .status-badge { font-size: 0.7rem; text-transform: uppercase; font-weight: bold; }
         #save_toast { position: fixed; top: 20px; right: 20px; z-index: 9999; display: none; }
-        .mandatory-label::after { content: " *"; color: red; }
+        .mandatory-label::after { content: " *"; color: red; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -27,10 +27,11 @@
         <button class="btn btn-outline-secondary btn-sm" onclick="location.reload()">🔄 Sync All</button>
     </div>
 
+    <!-- SESSION INFO -->
     <div id="session_info" class="session-info-bar card shadow-sm">
         <div class="row align-items-center">
             <div class="col-md-8">
-                <h5 class="mb-1">User: <span id="ui_user" class="text-primary"></span></h5>
+                <h5 class="mb-1">Employee: <span id="ui_user" class="text-primary"></span> (<span id="ui_empid"></span>)</h5>
                 <div class="d-flex gap-2 flex-wrap">
                     <span id="ui_mode" class="badge bg-dark"></span>
                     <span id="ui_status" class="badge bg-primary"></span>
@@ -43,6 +44,7 @@
         </div>
     </div>
 
+    <!-- SCANNER SECTION -->
     <div id="scanner_section" style="display:none;">
         <div class="card p-3">
             <div id="reader-container"><div id="reader"></div></div>
@@ -64,6 +66,7 @@
         </div>
     </div>
 
+    <!-- START SCREEN -->
     <div id="start_section" class="text-center py-5">
         <div class="card p-5">
             <h3>Ready to Scan?</h3>
@@ -71,12 +74,13 @@
         </div>
     </div>
 
+    <!-- LOG -->
     <div class="card p-4">
         <h5 class="mb-3">Live Activity Log</h5>
         <div class="table-responsive">
             <table class="table table-hover align-middle">
                 <thead class="table-light">
-                    <tr><th>Time</th><th>Identifiers</th><th>Status</th><th>User</th><th>Action</th></tr>
+                    <tr><th>Time</th><th>Identifiers</th><th>Status</th><th>Employee</th><th>Action</th></tr>
                 </thead>
                 <tbody id="history_body">
                     {% for scan in scans %}
@@ -84,7 +88,7 @@
                         <td class="small text-muted">{{ scan.timestamp.strftime('%H:%M') }}</td>
                         <td><div class="fw-bold">{{ scan.code }}</div><div class="small text-muted">{{ scan.device_type }}</div></td>
                         <td><span class="badge rounded-pill bg-secondary status-badge">{{ scan.status }}</span></td>
-                        <td>{{ scan.person_name or 'System' }}</td>
+                        <td>{{ scan.person_name }} ({{ scan.employee_id }})</td>
                         <td><button class="btn btn-sm text-danger" onclick="deleteSingle({{ scan.id }})">🗑️</button></td>
                     </tr>
                     {% endfor %}
@@ -103,10 +107,22 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-4">
+                <!-- UNIVERSAL MANDATORY SECTION -->
+                <div class="row bg-light p-3 rounded mb-4">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold mandatory-label">Employee Name</label>
+                        <input type="text" id="m_user" class="form-control border-primary" placeholder="Full Name">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold mandatory-label">Employee ID</label>
+                        <input type="text" id="m_emp_id" class="form-control border-primary" placeholder="ID Number">
+                    </div>
+                </div>
+
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold mandatory-label">Device Type</label>
-                        <select id="m_device" class="form-select border-primary" onchange="toggleUI()">
+                        <select id="m_device" class="form-select" onchange="toggleUI()">
                             <option value="">-- Select --</option>
                             <option value="Laptop">Laptop</option>
                             <option value="Mobile">Mobile</option>
@@ -128,7 +144,7 @@
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label fw-bold">Update Status</label>
+                    <label class="form-label fw-bold">Status Update</label>
                     <div class="row g-2">
                         <div class="col-4"><input type="radio" class="btn-check" name="status" id="st1" value="In Stock" checked onchange="toggleUI()"><label class="btn btn-sm btn-outline-secondary w-100" for="st1">In Stock</label></div>
                         <div class="col-4"><input type="radio" class="btn-check" name="status" id="st2" value="Loaned" onchange="toggleUI()"><label class="btn btn-sm btn-outline-secondary w-100" for="st2">Loaned</label></div>
@@ -159,37 +175,27 @@
                 <hr>
 
                 <div id="dynamic_fields">
-                    <!-- User Info Section (Mandatory for In Use, Loaned, Repair) -->
-                    <div class="row" id="group_user_info" style="display:none;">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label fw-bold mandatory-label">Person Name</label>
-                            <input type="text" id="m_user" class="form-control">
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label fw-bold mandatory-label">Employee ID</label>
-                            <input type="text" id="m_emp_id" class="form-control">
-                        </div>
-                    </div>
-
-                    <!-- Loan Specific -->
+                    <!-- Loan Details (Mandatory only for Loaned) -->
                     <div id="group_loan" style="display:none;">
-                        <div class="mb-3"><label class="form-label fw-bold mandatory-label">Email</label><input type="email" id="m_email" class="form-control"></div>
-                        <div class="mb-3"><label class="form-label fw-bold mandatory-label">Return Date</label><input type="date" id="m_date" class="form-control"></div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3"><label class="form-label fw-bold mandatory-label">Email</label><input type="email" id="m_email" class="form-control"></div>
+                            <div class="col-md-6 mb-3"><label class="form-label fw-bold mandatory-label">Return Date</label><input type="date" id="m_date" class="form-control"></div>
+                        </div>
                     </div>
 
-                    <!-- Stock Specific -->
+                    <!-- Stock Details (Mandatory only for In Stock) -->
                     <div id="group_stock" class="row" style="display:none;">
                         <div class="col-6 mb-3"><label class="form-label fw-bold mandatory-label">Purchase Date</label><input type="date" id="m_purchase" class="form-control"></div>
                         <div class="col-6 mb-3"><label class="form-label fw-bold mandatory-label">End of Cycle</label><input type="date" id="m_end" class="form-control"></div>
                     </div>
 
-                    <!-- Notes & Photo (Conditional Mandatory) -->
+                    <!-- Consistently Optional Fields -->
                     <div class="mb-3">
-                        <label class="form-label fw-bold" id="label_notes">Notes (Optional)</label>
-                        <textarea id="m_notes" class="form-control" rows="2"></textarea>
+                        <label class="form-label fw-bold">Notes (Optional)</label>
+                        <textarea id="m_notes" class="form-control" rows="2" placeholder="Add any details here..."></textarea>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-bold" id="label_photo">Photo (Optional)</label>
+                        <label class="form-label fw-bold">Photo (Optional)</label>
                         <input type="file" id="m_image" class="form-control" accept="image/*">
                     </div>
                 </div>
@@ -232,37 +238,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function toggleUI() {
     const status = document.querySelector('input[name="status"]:checked').value;
-    const device = document.getElementById('m_device').value;
     const dept = document.getElementById('m_dept').value;
 
-    // Reset visibility
     document.getElementById('group_other_dept').style.display = (dept === 'Other') ? 'block' : 'none';
-    document.getElementById('group_user_info').style.display = (status === 'In Use' || status === 'Loaned' || status === 'Repair') ? 'flex' : 'none';
     document.getElementById('group_loan').style.display = (status === 'Loaned') ? 'block' : 'none';
     document.getElementById('group_stock').style.display = (status === 'In Stock') ? 'flex' : 'none';
-
-    // Reset Labels to Optional
-    document.getElementById('label_notes').className = "form-label fw-bold";
-    document.getElementById('label_photo').className = "form-label fw-bold";
-    document.getElementById('label_notes').innerText = "Notes (Optional)";
-    document.getElementById('label_photo').innerText = "Photo (Optional)";
-
-    // Apply specific mandatory logic for Notes/Photo
-    if (status === 'Retired') {
-        document.getElementById('label_notes').innerText = "Reason for Retirement *";
-        document.getElementById('label_photo').innerText = "Serial Number Picture *";
-        document.getElementById('label_notes').className += " mandatory-label";
-        document.getElementById('label_photo').className += " mandatory-label";
-    } else if (status === 'Repair') {
-        document.getElementById('label_notes').innerText = "Issue Description *";
-        document.getElementById('label_notes').className += " mandatory-label";
-    }
-
-    if (device === 'Other') {
-        document.getElementById('label_notes').innerText = "Device Description *";
-        document.getElementById('label_notes').className += " mandatory-label";
-        document.getElementById('label_photo').className += " mandatory-label";
-    }
 }
 
 const toBase64 = f => new Promise((res, rej) => {
@@ -286,22 +266,27 @@ async function confirmSetup() {
     const imgFile = document.getElementById('m_image').files[0];
     let dept = document.getElementById('m_dept').value;
 
+    // MANDATORY CHECKS
+    if (!user || !empId) return alert("Employee Name and ID are mandatory for all transactions.");
     if (!device) return alert("Device Type is mandatory.");
+    
     if (dept === 'Other') {
         dept = document.getElementById('m_other_dept').value;
-        if (!dept) return alert("Specify department.");
+        if (!dept) return alert("Please specify the department.");
     }
 
-    // Validation Rules
-    if (status === 'In Stock' && (!purchase || !end)) return alert("Purchase Date and End of Cycle are mandatory.");
-    if ((status === 'In Use' || status === 'Loaned' || status === 'Repair') && (!user || !empId)) return alert("Person Name and Employee ID are mandatory.");
-    if (status === 'Loaned' && (!email || !date)) return alert("Email and Return Date are mandatory.");
-    if (status === 'Retired' && (!notes || !imgFile)) return alert("Reason and Serial Picture are mandatory.");
-    if (status === 'Repair' && !notes) return alert("Issue Description is mandatory.");
-    if (device === 'Other' && (!notes || !imgFile)) return alert("Notes and Picture are mandatory for 'Other' device type.");
+    // CONDITIONAL MANDATORY (In Stock Only)
+    if (status === 'In Stock' && (!purchase || !end)) {
+        return alert("Purchase Date and End of Cycle are mandatory for 'In Stock' status.");
+    }
+
+    // CONDITIONAL MANDATORY (Loaned Only)
+    if (status === 'Loaned' && (!email || !date)) {
+        return alert("Email and Return Date are mandatory for Loans.");
+    }
 
     session = {
-        user, dept, status, device, empId, email, date, notes, purchase, end,
+        user, empId, dept, status, device, email, date, notes, purchase, end,
         mode: document.querySelector('input[name="mode"]:checked').value,
         image_data: await toBase64(imgFile)
     };
@@ -314,14 +299,15 @@ function startUI() {
     document.getElementById('start_section').style.display = 'none';
     document.getElementById('session_info').style.display = 'block';
     document.getElementById('scanner_section').style.display = 'block';
-    document.getElementById('ui_user').innerText = session.user || 'System';
+    document.getElementById('ui_user').innerText = session.user;
+    document.getElementById('ui_empid').innerText = session.empId;
     document.getElementById('ui_mode').innerText = session.mode.toUpperCase();
     document.getElementById('ui_status').innerText = session.status;
     document.getElementById('ui_dept').innerText = session.dept;
 
     if (!scanner) {
         scanner = new Html5Qrcode("reader");
-        // SENSITIVE SETTINGS: 30 FPS for fast detection
+        // SENSITIVE: 30 FPS for fast detection
         scanner.start({ facingMode: "environment" }, { fps: 30, qrbox: 250 }, (text) => {
             document.getElementById(activeFieldId).value = text;
             if (activeFieldId === 'scan_serial') {
