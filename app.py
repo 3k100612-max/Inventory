@@ -92,7 +92,6 @@ def scanned():
         db.session.add(new_scan)
         db.session.commit()
         
-        # Return the data so the frontend can update the table locally
         return jsonify({
             "status": "success", 
             "id": new_scan.id,
