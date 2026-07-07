@@ -28,14 +28,13 @@ class InventoryScan(db.Model):
     department = db.Column(db.String(50), nullable=True)
     status = db.Column(db.String(50), nullable=False)
     person_name = db.Column(db.String(100), nullable=True)
+    employee_id = db.Column(db.String(50), nullable=True)
     email = db.Column(db.String(120), nullable=True)
     return_date = db.Column(db.Date, nullable=True)
     notes = db.Column(db.Text, nullable=True)
-    # New Fields
     purchase_date = db.Column(db.Date, nullable=True)
     end_of_cycle = db.Column(db.Date, nullable=True)
-    image_data = db.Column(db.Text, nullable=True) # Stores base64 photo
-    
+    image_data = db.Column(db.Text, nullable=True) 
     is_flagged = db.Column(db.Boolean, default=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -43,19 +42,17 @@ def init_db():
     with app.app_context():
         try:
             db.create_all()
-            # Migration logic for existing tables
-            cols_to_add = {
-                "purchase_date": "DATE",
-                "end_of_cycle": "DATE",
-                "image_data": "TEXT",
-                "device_type": "VARCHAR(50)"
+            # Dynamic migration for all required columns
+            cols = {
+                "purchase_date": "DATE", "end_of_cycle": "DATE", 
+                "image_data": "TEXT", "device_type": "VARCHAR(50)",
+                "employee_id": "VARCHAR(50)", "notes": "TEXT"
             }
-            for col, col_type in cols_to_add.items():
+            for col, col_type in cols.items():
                 try:
                     db.session.execute(text(f"ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS {col} {col_type}"))
                     db.session.commit()
-                except Exception:
-                    db.session.rollback()
+                except Exception: db.session.rollback()
         except Exception as e:
             print(f"Init Error: {e}", file=sys.stderr)
 
@@ -69,50 +66,31 @@ def index():
 @app.route('/scanned', methods=['POST'])
 def scanned():
     data = request.json
-    status = data.get("status")
-    
     def parse_dt(s):
         if not s or not s.strip(): return None
         try: return datetime.strptime(s, '%Y-%m-%d').date()
         except: return None
 
     try:
-        r_date = parse_dt(data.get("return_date"))
-        
-        # Flagging logic
-        flag_it = False
-        if status == 'Loaned' and r_date and r_date < datetime.now().date():
-            flag_it = True
-        elif status == 'Repair':
-            # Check if this code has been in repair many times before
-            repair_count = InventoryScan.query.filter_by(code=data.get("code"), status='Repair').count()
-            if repair_count >= 2: flag_it = True
-
         new_scan = InventoryScan(
             code=data.get("code"),
             imei=data.get("imei"),
             mac_address=data.get("mac_address"),
             device_type=data.get("device_type"),
             department=data.get("department"),
-            status=status,
+            status=data.get("status"),
             person_name=data.get("person_name"),
+            employee_id=data.get("employee_id"),
             email=data.get("email"),
-            return_date=r_date,
+            return_date=parse_dt(data.get("return_date")),
             notes=data.get("notes"),
             purchase_date=parse_dt(data.get("purchase_date")),
             end_of_cycle=parse_dt(data.get("end_of_cycle")),
-            image_data=data.get("image_data"),
-            is_flagged=flag_it
+            image_data=data.get("image_data")
         )
         db.session.add(new_scan)
         db.session.commit()
-        
-        return jsonify({
-            "status": "success", 
-            "id": new_scan.id,
-            "is_flagged": flag_it,
-            "time": new_scan.timestamp.strftime('%H:%M')
-        })
+        return jsonify({"status": "success", "id": new_scan.id, "time": new_scan.timestamp.strftime('%H:%M')})
     except Exception as e:
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -120,9 +98,8 @@ def scanned():
 @app.route('/delete', methods=['POST'])
 def delete_scans():
     data = request.json
-    ids = data.get('ids', [])
     try:
-        InventoryScan.query.filter(InventoryScan.id.in_(ids)).delete(synchronize_session=False)
+        InventoryScan.query.filter(InventoryScan.id.in_(data.get('ids', []))).delete(synchronize_session=False)
         db.session.commit()
         return jsonify({"status": "success"})
     except Exception as e:
