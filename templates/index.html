@@ -38,13 +38,15 @@
         <div class="d-flex justify-content-between align-items-center">
             <div>
                 <h5 class="mb-1">Active: <span id="ui_user" class="text-primary"></span> (<span id="ui_empid"></span>)</h5>
-                <span id="ui_status" class="badge bg-primary"></span> <span id="ui_device" class="badge bg-dark"></span>
+                <span id="ui_status" class="badge bg-primary"></span> 
+                <span id="ui_dept" class="badge bg-secondary"></span>
+                <span id="ui_device" class="badge bg-dark"></span>
             </div>
             <button class="btn btn-sm btn-danger fw-bold" onclick="location.reload()">End Session</button>
         </div>
     </div>
 
-    <!-- SCANNER -->
+    <!-- SCANNER SECTION -->
     <div id="scanner_section" style="display:none;">
         <div class="card p-3">
             <div id="reader"></div>
@@ -57,12 +59,12 @@
         </div>
     </div>
 
-    <!-- START BTN -->
+    <!-- START VIEW -->
     <div id="start_section" class="text-center py-5">
         <button class="btn btn-primary btn-lg px-5 fw-bold shadow" data-bs-toggle="modal" data-bs-target="#setupModal">Start New Session</button>
     </div>
 
-    <!-- LOGS -->
+    <!-- HISTORY LOG -->
     <div class="card p-4">
         <h5 class="mb-3 fw-bold">Recent Activity</h5>
         <div class="table-responsive">
@@ -74,7 +76,7 @@
                         <td class="small text-muted">{{ s.timestamp.strftime('%H:%M') }}</td>
                         <td><strong>{{ s.code }}</strong><br><small>{{ s.device_type }}</small></td>
                         <td><span class="badge bg-secondary">{{ s.status }}</span></td>
-                        <td>{{ s.person_name }}</td>
+                        <td>{{ s.person_name }} ({{ s.department }})</td>
                         <td>
                             {% if user.is_admin %}
                             <button class="btn btn-sm text-danger" onclick="deleteSingle({{ s.id }})">🗑️</button>
@@ -94,19 +96,31 @@
         <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-primary text-white"><h5 class="modal-title fw-bold">Session Setup</h5></div>
             <div class="modal-body p-4">
+                <!-- Employee Info -->
                 <div class="row mb-3">
                     <div class="col-md-6"><label class="mandatory-label small fw-bold">Employee Name</label><input type="text" id="m_user" class="form-control"></div>
                     <div class="col-md-6"><label class="mandatory-label small fw-bold">Employee ID</label><input type="text" id="m_emp_id" class="form-control"></div>
                 </div>
+
+                <!-- Device & Department Selection -->
                 <div class="row mb-3">
                     <div class="col-md-6">
                         <label class="mandatory-label small fw-bold">Device</label>
                         <select id="m_device" class="form-select" onchange="toggleUI()">
-                            <option value="Laptop">Laptop</option><option value="Mobile">Mobile</option><option value="Monitor">Monitor</option><option value="Printer">Printer</option><option value="Other">Other</option>
+                            <option value="Laptop">Laptop</option><option value="Mobile">Mobile</option><option value="Monitor">Monitor</option><option value="Other">Other</option>
                         </select>
+                        <input type="text" id="m_other_device" class="form-control mt-2 border-primary" style="display:none;" placeholder="Specify Device">
                     </div>
-                    <div class="col-md-6" id="g_other" style="display:none;"><label class="mandatory-label small fw-bold">Specify</label><input type="text" id="m_other" class="form-control border-primary"></div>
+                    <div class="col-md-6">
+                        <label class="mandatory-label small fw-bold">Department</label>
+                        <select id="m_dept" class="form-select" onchange="toggleUI()">
+                            <option value="IT">IT</option><option value="FINANCE">FINANCE</option><option value="HR">HR</option><option value="Other">Other</option>
+                        </select>
+                        <input type="text" id="m_other_dept" class="form-control mt-2 border-primary" style="display:none;" placeholder="Specify Department">
+                    </div>
                 </div>
+
+                <!-- Status Selection -->
                 <div class="mb-4">
                     <label class="mandatory-label small fw-bold">Status</label>
                     <div class="btn-group w-100 flex-wrap">
@@ -117,6 +131,8 @@
                         <input type="radio" class="btn-check" name="status" id="st5" value="Retired" onchange="toggleUI()"><label class="btn btn-outline-secondary" for="st5">Retired</label>
                     </div>
                 </div>
+
+                <!-- Dynamic Sections -->
                 <div id="g_stock" style="display:none;" class="row">
                     <div class="col-md-6 mb-3"><label class="mandatory-label small fw-bold">Purchase Date</label><input type="date" id="m_purchase" class="form-control"></div>
                     <div class="col-md-6 mb-3"><label class="mandatory-label small fw-bold">End Cycle</label><input type="date" id="m_end" class="form-control"></div>
@@ -125,9 +141,11 @@
                     <div class="col-md-6 mb-3"><label class="mandatory-label small fw-bold">Email</label><input type="email" id="m_email" class="form-control"></div>
                     <div class="col-md-6 mb-3"><label class="mandatory-label small fw-bold">Return Date</label><input type="date" id="m_date" class="form-control"></div>
                 </div>
-                <div class="mb-3"><label class="small fw-bold">Notes</label><textarea id="m_notes" class="form-control"></textarea></div>
+
+                <div class="mb-3"><label class="small fw-bold">Notes</label><textarea id="m_notes" class="form-control" rows="2"></textarea></div>
                 <div class="mb-3"><label class="small fw-bold">Photo</label><input type="file" id="m_image" class="form-control" accept="image/*"></div>
-                <button class="btn btn-primary w-100 py-3 fw-bold shadow" onclick="confirmSetup()">START SCANNING</button>
+                
+                <button class="btn btn-primary w-100 py-3 fw-bold shadow" onclick="confirmSetup()">START SCANNING SESSION</button>
             </div>
         </div>
     </div>
@@ -136,14 +154,14 @@
 <!-- PROMPT MODAL -->
 <div class="modal fade" id="promptModal" data-bs-backdrop="static">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg">
-            <div class="modal-body p-4 text-center">
+        <div class="modal-content border-0 shadow-lg text-center">
+            <div class="modal-body p-4">
                 <h5 class="fw-bold mb-3">Serial Captured</h5>
                 <div class="d-grid gap-2">
                     <button class="btn btn-primary py-2 fw-bold" onclick="setNextField('scan_imei')">Scan IMEI</button>
                     <button class="btn btn-info py-2 fw-bold" onclick="setNextField('scan_mac')">Scan MAC</button>
                     <hr>
-                    <button class="btn btn-success py-3 fw-bold" onclick="saveData()">Save Record Now</button>
+                    <button class="btn btn-success py-3 fw-bold shadow-sm" onclick="saveData()">Save Record Now</button>
                 </div>
             </div>
         </div>
@@ -162,7 +180,11 @@ document.addEventListener('DOMContentLoaded', () => {
 function toggleUI() {
     const status = document.querySelector('input[name="status"]:checked').value;
     const device = document.getElementById('m_device').value;
-    document.getElementById('g_other').style.display = (device === 'Other') ? 'block' : 'none';
+    const dept = document.getElementById('m_dept').value;
+
+    document.getElementById('m_other_device').style.display = (device === 'Other') ? 'block' : 'none';
+    document.getElementById('m_other_dept').style.display = (dept === 'Other') ? 'block' : 'none';
+    
     document.getElementById('g_loan').style.display = (status === 'Loaned') ? 'flex' : 'none';
     document.getElementById('g_stock').style.display = (status === 'In Stock') ? 'flex' : 'none';
 }
@@ -178,15 +200,23 @@ async function confirmSetup() {
     const user = document.getElementById('m_user').value;
     const empId = document.getElementById('m_emp_id').value;
     let device = document.getElementById('m_device').value;
-    if(device === 'Other') device = document.getElementById('m_other').value;
+    let dept = document.getElementById('m_dept').value;
 
-    if(!user || !empId) return alert("Fill mandatory fields.");
+    if(!user || !empId) return alert("Please enter Employee Name and ID.");
     
-    session = { user, empId, device, status: document.querySelector('input[name="status"]:checked').value,
-                email: document.getElementById('m_email').value, date: document.getElementById('m_date').value,
-                purchase: document.getElementById('m_purchase').value, end: document.getElementById('m_end').value,
-                notes: document.getElementById('m_notes').value, 
-                image_data: await toBase64(document.getElementById('m_image').files[0]) };
+    if(device === 'Other') device = document.getElementById('m_other_device').value;
+    if(dept === 'Other') dept = document.getElementById('m_other_dept').value;
+
+    session = { 
+        user, empId, device, dept,
+        status: document.querySelector('input[name="status"]:checked').value,
+        email: document.getElementById('m_email').value, 
+        date: document.getElementById('m_date').value,
+        purchase: document.getElementById('m_purchase').value, 
+        end: document.getElementById('m_end').value,
+        notes: document.getElementById('m_notes').value, 
+        image_data: await toBase64(document.getElementById('m_image').files[0]) 
+    };
 
     bootstrap.Modal.getInstance(document.getElementById('setupModal')).hide();
     document.getElementById('start_section').style.display = 'none';
@@ -196,6 +226,7 @@ async function confirmSetup() {
     document.getElementById('ui_user').textContent = user;
     document.getElementById('ui_empid').textContent = empId;
     document.getElementById('ui_status').textContent = session.status;
+    document.getElementById('ui_dept').textContent = dept;
     document.getElementById('ui_device').textContent = device;
 
     scanner = new Html5Qrcode("reader");
@@ -219,8 +250,12 @@ function setNextField(id) {
 
 function saveData() {
     promptModal.hide();
-    const payload = { ...session, code: document.getElementById('scan_serial').value, 
-                      imei: document.getElementById('scan_imei').value, mac_address: document.getElementById('scan_mac').value };
+    const payload = { 
+        ...session, 
+        code: document.getElementById('scan_serial').value, 
+        imei: document.getElementById('scan_imei').value, 
+        mac_address: document.getElementById('scan_mac').value 
+    };
     fetch('/scanned', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })
     .then(r => r.json()).then(d => {
         if(d.status === 'success') {
@@ -231,7 +266,7 @@ function saveData() {
 }
 
 function deleteSingle(id) {
-    if(confirm("Delete record?")) {
+    if(confirm("Delete this record permanently?")) {
         fetch('/delete', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ids: [id]}) })
         .then(() => location.reload());
     }
