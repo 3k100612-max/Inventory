@@ -42,11 +42,12 @@ def init_db():
     with app.app_context():
         try:
             db.create_all()
-            # Dynamic migration for all required columns
+            # Dynamic migration to ensure all columns exist for existing databases
             cols = {
                 "purchase_date": "DATE", "end_of_cycle": "DATE", 
                 "image_data": "TEXT", "device_type": "VARCHAR(50)",
-                "employee_id": "VARCHAR(50)", "notes": "TEXT"
+                "employee_id": "VARCHAR(50)", "notes": "TEXT",
+                "person_name": "VARCHAR(100)"
             }
             for col, col_type in cols.items():
                 try:
