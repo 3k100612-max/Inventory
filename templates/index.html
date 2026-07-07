@@ -216,7 +216,17 @@ function updateToolbar() {
 function deleteSelected() {
     const selected = Array.from(document.querySelectorAll('.row-check:checked')).map(cb => parseInt(cb.value));
     if (!selected.length || !confirm(`Delete ${selected.length} records?`)) return;
-    fetch('/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: selected }) }).then(() => location.reload());
+    
+    fetch('/delete', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ ids: selected }) 
+    })
+    .then(response => {
+        if (!response.ok) throw new Error("Delete failed");
+        location.reload();
+    })
+    .catch(err => alert(err.message));
 }
 
 function confirmSetup() {
@@ -230,7 +240,8 @@ function confirmSetup() {
     session.date = document.getElementById('m_date').value;
     session.notes = document.getElementById('m_notes').value;
 
-    bootstrap.Modal.getInstance(document.getElementById('setupModal')).hide();
+    const modal = bootstrap.Modal.getInstance(document.getElementById('setupModal'));
+    if (modal) modal.hide();
     startUI();
 }
 
@@ -255,7 +266,7 @@ function startUI() {
         } else if (activeFieldId === 'scan_imei') {
             setActiveField('scan_mac');
         }
-    });
+    }).catch(err => console.error("Scanner failed", err));
 }
 
 function saveData() {
@@ -272,7 +283,12 @@ function saveData() {
             device_type: session.device, status: session.status, 
             email: session.email, return_date: session.date, notes: session.notes
         })
-    }).then(() => {
+    })
+    .then(response => {
+        if (!response.ok) return response.json().then(e => { throw new Error(e.message) });
+        return response.json();
+    })
+    .then(() => {
         if(session.mode === 'single') finishSession();
         else {
             document.getElementById('scan_serial').value = '';
@@ -280,14 +296,21 @@ function saveData() {
             document.getElementById('scan_mac').value = '';
             setActiveField('scan_serial');
             document.getElementById('btn_save_multi').disabled = true;
+            // Optional: Update table without reload for better UX
             location.reload(); 
         }
-    });
+    })
+    .catch(err => alert("Save Error: " + err.message));
 }
 
 function finishSession() {
-    if(scanner) scanner.stop().finally(() => location.reload());
-    else location.reload();
+    if(scanner) {
+        scanner.stop()
+            .then(() => location.reload())
+            .catch(() => location.reload());
+    } else {
+        location.reload();
+    }
 }
 </script>
 </body>
