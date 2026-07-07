@@ -7,17 +7,19 @@ import os
 import sys
 
 app = Flask(__name__)
-app.secret_key = 'super-secret-inventory-key'
+# In production, change this to an environment variable for security
+app.secret_key = os.environ.get('SECRET_KEY', 'super-secret-inventory-key')
 
-# Database Configuration
+# --- Database Configuration ---
+# Defaults changed to 'db' or 'localhost' for better portability
 DB_USER = os.environ.get('DB_USER', 'postgres')
 DB_PASS = os.environ.get('DB_PASS', 'P12345')
-DB_HOST = os.environ.get('DB_HOST', 'inventory-inventory-sqaoox')
+DB_HOST = os.environ.get('DB_HOST', 'db') 
 DB_NAME = os.environ.get('DB_NAME', 'inventory')
 
 app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-# Added a timeout so the app doesn't hang forever if the DB is down
+# Timeout prevents the app from hanging if the DB container isn't ready yet
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {"connect_args": {"connect_timeout": 5}}
 
 db = SQLAlchemy(app)
@@ -56,17 +58,28 @@ def load_user(user_id):
 def setup_database():
     with app.app_context():
         try:
-            # This creates all tables defined in models if they don't exist
+            # Create all tables
             db.create_all()
-            # Check if the Admin table actually has a Super Admin
-            if Admin.query.filter_by(username='admin').first():
+            
+            # FIXED: Logic check. Create admin ONLY if it doesn't exist.
+            if not Admin.query.filter_by(username='admin').first():
                 hpw = generate_password_hash('admin123')
-                super_user = Admin(id=1,username='admin', password_hash=hpw, role='super_admin')
+                # Removed manual ID assignment to let DB handle auto-increment
+                super_user = Admin(
+                    username='admin', 
+                    password_hash=hpw, 
+                    role='super_admin'
+                )
                 db.session.add(super_user)
                 db.session.commit()
                 print(">>> Default Super Admin created (admin / admin123)")
+            else:
+                print(">>> Database ready: Admin user already exists.")
         except Exception as e:
             print(f">>> DATABASE SETUP ERROR: {e}", file=sys.stderr)
+
+# IMPORTANT: Call setup here so it runs during 'flask run'
+setup_database()
 
 # --- ROUTES ---
 
@@ -74,8 +87,8 @@ def setup_database():
 def login():
     if request.method == 'POST':
         try:
-            user = Admin.query.filter_by(username=request.form['username']).first()
-            if user and check_password_hash(user.password_hash, request.form['password']):
+            user = Admin.query.filter_by(username=request.form.get('username')).first()
+            if user and check_password_hash(user.password_hash, request.form.get('password')):
                 login_user(user)
                 return redirect(url_for('index'))
         except Exception as e:
@@ -110,7 +123,6 @@ def index():
     except Exception as e:
         return f"Database Connection Failed: {e}", 500
 
-# New Route: Add other Admins (Super Admin only)
 @app.route('/add-admin', methods=['POST'])
 @login_required
 def add_admin():
@@ -121,6 +133,9 @@ def add_admin():
     username = data.get('username')
     password = data.get('password')
     
+    if not username or not password:
+        return jsonify({"status": "error", "message": "Missing credentials"}), 400
+
     if Admin.query.filter_by(username=username).first():
         return jsonify({"status": "error", "message": "User already exists"}), 400
     
@@ -131,46 +146,8 @@ def add_admin():
     )
     db.session.add(new_admin)
     db.session.commit()
-    return jsonify({"status": "success"})
+    return jsonify({"status": "success", "message": f"Admin {username} created"})
 
-@app.route('/scanned', methods=['POST'])
-@login_required
-def scanned():
-    data = request.json
-    try:
-        # Repair flagging (3rd scan)
-        repair_count = InventoryScan.query.filter_by(code=data.get("code"), status='Repair').count()
-        flag_it = (data.get("status") == 'Repair' and repair_count >= 2)
-        
-        ret_date = None
-        if data.get("return_date"):
-            ret_date = datetime.strptime(data.get("return_date"), '%Y-%m-%d').date()
-
-        new_scan = InventoryScan(
-            code=data.get("code"), status=data.get("status"), notes=data.get("notes"),
-            device_type=data.get("device_type"), department=data.get("department"),
-            assigned_user=data.get("assigned_user"), user_email=data.get("user_email"),
-            return_date=ret_date, is_flagged=flag_it,
-            imei=data.get("imei"), mac_address=data.get("mac_address"), photo=data.get("photo")
-        )
-        db.session.add(new_scan)
-        db.session.commit()
-        return jsonify({"status": "success", "is_flagged": flag_it, "id": new_scan.id})
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route('/delete-scans', methods=['POST'])
-@login_required
-def delete_scans():
-    if current_user.role != 'super_admin':
-        return jsonify({"status": "error", "message": "Unauthorized"}), 403
-    
-    ids = request.json.get('ids', [])
-    InventoryScan.query.filter(InventoryScan.id.in_(ids)).delete(synchronize_session=False)
-    db.session.commit()
-    return jsonify({"status": "success"})
-
-if __name__ == '__main__':
-    setup_database()
+if __name__ == "__main__":
+    # This block is used for 'python app.py', but not for 'flask run'
     app.run(host='0.0.0.0', port=8506)
