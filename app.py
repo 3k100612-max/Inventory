@@ -14,7 +14,7 @@ app.secret_key = os.environ.get('SECRET_KEY', 'super-secret-inventory-key')
 # Defaults changed to 'db' or 'localhost' for better portability
 DB_USER = os.environ.get('DB_USER', 'postgres')
 DB_PASS = os.environ.get('DB_PASS', 'P12345')
-DB_HOST = os.environ.get('DB_HOST', 'db') 
+DB_HOST = os.environ.get('DB_HOST', 'inventory-inventory-sqaoox') 
 DB_NAME = os.environ.get('DB_NAME', 'inventory')
 
 app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}'
