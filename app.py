@@ -7,8 +7,7 @@ import sys
 
 app = Flask(__name__)
 
-# --- Database Configuration ---
-# If running locally, you may need to change DB_HOST to 'localhost'
+# Database Configuration
 DB_USER = os.environ.get('DB_USER', 'postgres')
 DB_PASS = os.environ.get('DB_PASS', 'P12345')
 DB_HOST = os.environ.get('DB_HOST', 'inventory-inventory-sqaoox')
@@ -43,7 +42,6 @@ def init_db():
             cols = ["imei", "mac_address", "device_type", "department", "person_name", "email", "return_date", "is_flagged", "timestamp"]
             for col in cols:
                 try:
-                    # PostgreSQL specific: ADD COLUMN IF NOT EXISTS
                     db.session.execute(text(f"ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS {col} VARCHAR"))
                     db.session.commit()
                 except Exception:
@@ -52,11 +50,11 @@ def init_db():
         except Exception as e:
             print(f"Critical DB Init Error: {e}", file=sys.stderr)
 
-# Run initialization immediately so it works on Gunicorn/Production
+# Run initialization immediately (essential for Gunicorn/Production)
 init_db()
 
 def run_global_maintenance():
-    """Scans for overdue items safely."""
+    """Flags overdue items safely."""
     try:
         today = datetime.now().date()
         InventoryScan.query.filter(
@@ -76,7 +74,7 @@ def index():
         recent_scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(100).all()
         return render_template('index.html', scans=recent_scans)
     except Exception as e:
-        return f"Database Error: {str(e)}", 500
+        return f"Database connectivity error: {str(e)}", 500
 
 @app.route('/scanned', methods=['POST'])
 def scanned():
@@ -95,7 +93,6 @@ def scanned():
         code = data.get("code")
         status = data.get("status")
         
-        # Flagging logic
         repair_count = InventoryScan.query.filter_by(code=code, status='Repair').count()
         flag_it = False
         if status == 'Repair' and repair_count >= 2:
@@ -130,7 +127,6 @@ def delete_scans():
     if not ids or not isinstance(ids, list):
         return jsonify({"status": "error", "message": "No items selected"}), 400
     try:
-        # Efficient bulk delete
         InventoryScan.query.filter(InventoryScan.id.in_(ids)).delete(synchronize_session=False)
         db.session.commit()
         return jsonify({"status": "success", "deleted_count": len(ids)})
