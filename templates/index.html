@@ -14,23 +14,20 @@
         .overdue-row { background-color: #fff5f5 !important; border-left: 4px solid #dc3545; }
         .active-scan-field { border: 3px solid #0d6efd !important; background-color: #e7f1ff !important; }
         .status-badge { font-size: 0.7rem; text-transform: uppercase; font-weight: bold; }
-        .delete-toolbar { display: none; }
-        .btn-delete-row { color: #dc3545; cursor: pointer; opacity: 0.6; transition: 0.2s; }
-        .btn-delete-row:hover { opacity: 1; }
-        #save_feedback { display: none; position: fixed; top: 20px; right: 20px; z-index: 9999; }
+        #save_toast { position: fixed; top: 20px; right: 20px; z-index: 9999; display: none; }
     </style>
 </head>
 <body>
 
-<div id="save_feedback" class="alert alert-success shadow">Record Saved Successfully!</div>
+<div id="save_toast" class="alert alert-success shadow">✅ Record Saved!</div>
 
 <div class="container">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2 class="fw-bold text-dark">Inventory Control</h2>
-        <button class="btn btn-outline-secondary btn-sm" onclick="location.reload()">🔄 Sync & Refresh</button>
+        <button class="btn btn-outline-secondary btn-sm" onclick="location.reload()">🔄 Sync All</button>
     </div>
 
-    <!-- ACTIVE SESSION INFO -->
+    <!-- SESSION INFO -->
     <div id="session_info" class="session-info-bar card shadow-sm">
         <div class="row align-items-center">
             <div class="col-md-8">
@@ -39,23 +36,22 @@
                     <span id="ui_mode" class="badge bg-dark"></span>
                     <span id="ui_status" class="badge bg-primary"></span>
                     <span id="ui_dept" class="badge bg-secondary"></span>
-                    <span id="ui_device" class="badge bg-info text-dark"></span>
                 </div>
             </div>
             <div class="col-md-4 text-end">
-                <button class="btn btn-outline-danger fw-bold" onclick="finishSession()">EXIT SESSION</button>
+                <button class="btn btn-sm btn-danger" onclick="finishSession()">End Session</button>
             </div>
         </div>
     </div>
 
-    <!-- SCANNER VIEW -->
+    <!-- SCANNER SECTION -->
     <div id="scanner_section" style="display:none;">
         <div class="card p-3">
             <div id="reader-container"><div id="reader"></div></div>
             <div class="row mt-3 g-2">
                 <div class="col-md-4">
-                    <label class="small fw-bold text-primary">SERIAL NUMBER (REQ)</label>
-                    <input type="text" id="scan_serial" class="form-control active-scan-field" placeholder="Waiting for scan..." readonly>
+                    <label class="small fw-bold text-primary">SERIAL (REQ)</label>
+                    <input type="text" id="scan_serial" class="form-control active-scan-field" placeholder="Waiting..." readonly>
                 </div>
                 <div class="col-md-4">
                     <label class="small fw-bold">IMEI</label>
@@ -66,33 +62,25 @@
                     <input type="text" id="scan_mac" class="form-control" placeholder="Optional" readonly>
                 </div>
             </div>
-            <div class="mt-3">
-                <button id="btn_save_record" class="btn btn-success btn-lg w-100 fw-bold shadow-sm" onclick="saveData()" disabled>SAVE RECORD</button>
-            </div>
+            <button id="btn_manual_save" class="btn btn-success btn-lg w-100 mt-3 fw-bold" onclick="saveData()" disabled>SAVE CURRENT RECORD</button>
         </div>
     </div>
 
     <!-- START SCREEN -->
     <div id="start_section" class="text-center py-5">
-        <div class="card p-5 border-0 shadow-sm">
-            <h3 class="mb-3">Ready to Start?</h3>
-            <button class="btn btn-primary btn-lg px-5 shadow" data-bs-toggle="modal" data-bs-target="#setupModal">+ Start New Session</button>
+        <div class="card p-5">
+            <h3>Ready to Scan?</h3>
+            <button class="btn btn-primary btn-lg mt-3" data-bs-toggle="modal" data-bs-target="#setupModal">Start New Session</button>
         </div>
     </div>
 
-    <!-- HISTORY LOG -->
+    <!-- LOG -->
     <div class="card p-4">
-        <h5 class="mb-3">Recent Activity</h5>
+        <h5 class="mb-3">Live Activity Log</h5>
         <div class="table-responsive">
             <table class="table table-hover align-middle">
                 <thead class="table-light">
-                    <tr>
-                        <th>Time</th>
-                        <th>Identifiers</th>
-                        <th>Status</th>
-                        <th>User</th>
-                        <th class="text-end">Action</th>
-                    </tr>
+                    <tr><th>Time</th><th>Identifiers</th><th>Status</th><th>User</th><th>Action</th></tr>
                 </thead>
                 <tbody id="history_body">
                     {% for scan in scans %}
@@ -104,7 +92,7 @@
                         </td>
                         <td><span class="badge rounded-pill bg-secondary status-badge">{{ scan.status }}</span></td>
                         <td>{{ scan.person_name }}</td>
-                        <td class="text-end"><span class="btn-delete-row" onclick="deleteSingle({{ scan.id }})">🗑️</span></td>
+                        <td><button class="btn btn-sm text-danger" onclick="deleteSingle({{ scan.id }})">🗑️</button></td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -113,55 +101,61 @@
     </div>
 </div>
 
-<!-- OPTIONAL FIELDS MODAL -->
-<div class="modal fade" id="skipModal" data-bs-backdrop="static" tabindex="-1">
+<!-- PROMPT MODAL -->
+<div class="modal fade" id="promptModal" data-bs-backdrop="static" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
+        <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-dark text-white">
                 <h5 class="modal-title">Serial Captured</h5>
             </div>
-            <div class="modal-body text-center p-4">
-                <p>Do you want to add IMEI or MAC address?</p>
+            <div class="modal-body p-4 text-center">
+                <p class="mb-4">Would you like to scan optional identifiers for this device?</p>
                 <div class="d-grid gap-2">
-                    <button class="btn btn-primary py-2" onclick="continueToField('scan_imei')">Scan IMEI</button>
-                    <button class="btn btn-info py-2" onclick="continueToField('scan_mac')">Scan MAC</button>
+                    <button class="btn btn-primary py-2" onclick="setNextField('scan_imei')">Scan IMEI</button>
+                    <button class="btn btn-info py-2" onclick="setNextField('scan_mac')">Scan MAC Address</button>
                     <hr>
-                    <button class="btn btn-success py-3 fw-bold" onclick="saveData()">No, Save Now</button>
+                    <button class="btn btn-success py-3 fw-bold" onclick="saveData()">No, Save & Continue</button>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- SETUP MODAL (Omitted for brevity, use your existing setup modal) -->
+<!-- SETUP MODAL (Omitted for brevity, use your existing one) -->
 <div class="modal fade" id="setupModal" data-bs-backdrop="static" tabindex="-1">
-    <!-- ... Your existing Setup Modal Code ... -->
+    <!-- ... Your existing setup modal code ... -->
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 let scanner;
 let activeFieldId = 'scan_serial';
-let session = { user: '', dept: '', mode: '', device: '', status: '', email: '', date: '', notes: '' };
-const skipModal = new bootstrap.Modal(document.getElementById('skipModal'));
+let session = {};
+let promptModal;
 
-function setActiveField(id) {
+document.addEventListener('DOMContentLoaded', () => {
+    promptModal = new bootstrap.Modal(document.getElementById('promptModal'));
+});
+
+function setNextField(id) {
+    promptModal.hide();
     activeFieldId = id;
-    document.querySelectorAll('#scanner_section input').forEach(el => el.classList.remove('active-scan-field'));
+    document.querySelectorAll('#scanner_section input').forEach(i => i.classList.remove('active-scan-field'));
     document.getElementById(id).classList.add('active-scan-field');
-}
-
-function continueToField(id) {
-    skipModal.hide();
-    setActiveField(id);
     if (scanner) scanner.resume();
 }
 
 function confirmSetup() {
-    session.user = document.getElementById('m_user').value || 'User';
-    session.mode = document.querySelector('input[name="mode"]:checked').value;
-    session.status = document.querySelector('input[name="status"]:checked').value;
-    // ... (Map other fields as per your original code)
+    session = {
+        user: document.getElementById('m_user').value || 'User',
+        dept: document.getElementById('m_dept').value,
+        mode: document.querySelector('input[name="mode"]:checked').value,
+        status: document.querySelector('input[name="status"]:checked').value,
+        device: document.getElementById('m_device').value,
+        email: document.getElementById('m_email').value,
+        date: document.getElementById('m_date').value,
+        notes: document.getElementById('m_notes').value
+    };
 
     bootstrap.Modal.getInstance(document.getElementById('setupModal')).hide();
     startUI();
@@ -180,28 +174,32 @@ function startUI() {
         scanner = new Html5Qrcode("reader");
         scanner.start({ facingMode: "environment" }, { fps: 20, qrbox: 250 }, (text) => {
             document.getElementById(activeFieldId).value = text;
-            
+            if (navigator.vibrate) navigator.vibrate(50);
+
             if (activeFieldId === 'scan_serial') {
                 scanner.pause();
-                document.getElementById('btn_save_record').disabled = false;
-                skipModal.show();
+                document.getElementById('btn_manual_save').disabled = false;
+                promptModal.show();
             } else {
-                // After scanning IMEI or MAC, ready for save
-                document.getElementById('btn_save_record').classList.add('btn-pulse');
+                // Auto-save logic if you want, or just keep field active
+                document.getElementById('btn_manual_save').classList.add('btn-pulse');
             }
         });
     }
 }
 
 function saveData() {
-    skipModal.hide();
+    promptModal.hide();
+    const code = document.getElementById('scan_serial').value;
+    if (!code) return;
+
     const payload = {
-        code: document.getElementById('scan_serial').value,
+        code: code,
         imei: document.getElementById('scan_imei').value,
         mac_address: document.getElementById('scan_mac').value,
-        person_name: session.user, 
-        status: session.status,
-        // ... (Add other session fields)
+        person_name: session.user, department: session.dept,
+        device_type: session.device, status: session.status, 
+        email: session.email, return_date: session.date, notes: session.notes
     };
 
     fetch('/scanned', {
@@ -212,53 +210,55 @@ function saveData() {
     .then(res => res.json())
     .then(data => {
         if (data.status === 'success') {
-            showFeedback();
-            updateTableLocally(payload, data.is_flagged);
-            resetInputs();
+            showToast();
+            addTableRow(payload, data);
+            resetForNext();
         }
     });
 }
 
-function updateTableLocally(item, flagged) {
-    const tbody = document.getElementById('history_body');
-    const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+function addTableRow(item, meta) {
     const row = `
-        <tr class="${flagged ? 'overdue-row' : ''}">
-            <td class="small text-muted">${time}</td>
+        <tr id="row-${meta.id}" class="${meta.is_flagged ? 'overdue-row' : ''}">
+            <td class="small text-muted">${meta.time}</td>
             <td>
-                <div class="fw-bold">${item.code} ${flagged ? '🚩' : ''}</div>
+                <div class="fw-bold">${item.code} ${meta.is_flagged ? '🚩' : ''}</div>
                 <div class="small text-muted">${item.imei ? 'IMEI: '+item.imei : ''}</div>
             </td>
             <td><span class="badge rounded-pill bg-secondary status-badge">${item.status}</span></td>
             <td>${item.person_name}</td>
-            <td class="text-end">...</td>
+            <td><button class="btn btn-sm text-danger" onclick="deleteSingle(${meta.id})">🗑️</button></td>
         </tr>`;
-    tbody.insertAdjacentHTML('afterbegin', row);
+    document.getElementById('history_body').insertAdjacentHTML('afterbegin', row);
 }
 
-function resetInputs() {
+function resetForNext() {
     document.getElementById('scan_serial').value = '';
     document.getElementById('scan_imei').value = '';
     document.getElementById('scan_mac').value = '';
-    document.getElementById('btn_save_record').disabled = true;
-    setActiveField('scan_serial');
-    if (scanner) scanner.resume();
-}
-
-function showFeedback() {
-    const el = document.getElementById('save_feedback');
-    el.style.display = 'block';
-    setTimeout(() => el.style.display = 'none', 2000);
-}
-
-function finishSession() {
-    if (confirm("End session and clear setup?")) {
-        location.reload();
+    document.getElementById('btn_manual_save').disabled = true;
+    
+    // In Bulk mode, we just reset the fields and keep going
+    if (session.mode === 'multiple') {
+        setNextField('scan_serial');
+    } else {
+        finishSession();
     }
 }
 
+function showToast() {
+    const t = document.getElementById('save_toast');
+    t.style.display = 'block';
+    setTimeout(() => t.style.display = 'none', 2000);
+}
+
+function finishSession() {
+    if (scanner) scanner.stop().finally(() => location.reload());
+    else location.reload();
+}
+
 function deleteSingle(id) {
-    if (!confirm("Delete this record?")) return;
+    if (!confirm("Delete?")) return;
     fetch('/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
