@@ -1,0 +1,21 @@
+# --- Security & Secrets ---
+# Ignore the file where you might store local environment variables
+.env
+# If you have a local instance folder with a database file
+instance/
+
+# --- Python & System ---
+# Ignore compiled Python files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Virtual Environments ---
+# If you use a virtual environment locally (usually named venv or env)
+venv/
+env/
+.venv/
+
+# --- Operating System Files ---
+.DS_Store
+Thumbs.db
