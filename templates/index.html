@@ -4,20 +4,38 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inventory Control Pro</title>
+    <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- QR/Barcode Scanner Library -->
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body { background-color: #f4f7f6; padding: 20px; font-family: 'Segoe UI', sans-serif; }
         .card { border: none; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); margin-bottom: 20px; }
-        #reader { width: 100%; border-radius: 15px; overflow: hidden; background: #222; min-height: 300px; }
+        
+        /* Scanner Container Fixes */
+        #reader { 
+            width: 100%; 
+            min-height: 300px; 
+            background: #000; 
+            border-radius: 15px; 
+            overflow: hidden; 
+        }
+        #reader video {
+            width: 100% !important;
+            height: auto !important;
+            border-radius: 15px;
+        }
+
         .session-info-bar { display: none; background: #fff; border-left: 6px solid #0d6efd; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
         .active-scan-field { border: 3px solid #0d6efd !important; background-color: #e7f1ff !important; }
+        .status-badge { font-size: 0.7rem; text-transform: uppercase; font-weight: bold; }
         .mandatory-label::after { content: " *"; color: red; font-weight: bold; }
         #save_toast { position: fixed; top: 20px; right: 20px; z-index: 9999; display: none; }
     </style>
 </head>
 <body>
 
+<!-- Success Feedback Toast -->
 <div id="save_toast" class="alert alert-success shadow">✅ Record Saved Successfully!</div>
 
 <div class="container">
@@ -25,43 +43,67 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h2 class="fw-bold text-dark mb-0">Inventory Control</h2>
-            <span class="small text-muted">User: <strong>{{ user.username }}</strong></span>
+            <span class="small text-muted">Logged in as: <strong>{{ user.username }}</strong></span>
         </div>
         <div class="d-flex gap-2">
-            {% if user.is_admin %}<a href="/admin/users" class="btn btn-primary btn-sm fw-bold">Manage Users</a>{% endif %}
+            {% if user.is_admin %}
+            <a href="/admin/users" class="btn btn-primary btn-sm fw-bold">Manage Users</a>
+            {% endif %}
             <a href="/logout" class="btn btn-outline-danger btn-sm fw-bold">Logout</a>
+            <button class="btn btn-outline-secondary btn-sm" onclick="location.reload()">🔄 Sync</button>
         </div>
     </div>
 
-    <!-- SESSION BAR -->
+    <!-- ACTIVE SESSION BAR -->
     <div id="session_info" class="session-info-bar card shadow-sm">
-        <div class="d-flex justify-content-between align-items-center">
-            <div>
-                <h5 class="mb-1">Active: <span id="ui_user" class="text-primary"></span> (<span id="ui_empid"></span>)</h5>
-                <span id="ui_status" class="badge bg-primary"></span> 
-                <span id="ui_dept" class="badge bg-secondary"></span>
-                <span id="ui_mode" class="badge bg-info text-dark"></span>
+        <div class="row align-items-center">
+            <div class="col-md-9">
+                <h5 class="mb-1">Active Session: <span id="ui_user" class="text-primary"></span> (<span id="ui_empid"></span>)</h5>
+                <div class="d-flex gap-2 flex-wrap">
+                    <span id="ui_status" class="badge bg-primary"></span>
+                    <span id="ui_dept" class="badge bg-secondary"></span>
+                    <span id="ui_device" class="badge bg-dark"></span>
+                    <span id="ui_mode" class="badge bg-info text-dark"></span>
+                </div>
             </div>
-            <button class="btn btn-sm btn-danger fw-bold" onclick="location.reload()">End Session</button>
+            <div class="col-md-3 text-end">
+                <button class="btn btn-sm btn-danger fw-bold" onclick="location.reload()">End Session</button>
+            </div>
         </div>
     </div>
 
-    <!-- SCANNER SECTION -->
+    <!-- SCANNER VIEW -->
     <div id="scanner_section" style="display:none;">
         <div class="card p-3">
             <div id="reader"></div>
             <div class="row mt-3 g-2">
-                <div class="col-md-4"><label class="small fw-bold text-primary">SERIAL</label><input type="text" id="scan_serial" class="form-control active-scan-field" readonly></div>
-                <div class="col-md-4"><label class="small fw-bold">IMEI</label><input type="text" id="scan_imei" class="form-control" readonly></div>
-                <div class="col-md-4"><label class="small fw-bold">MAC</label><input type="text" id="scan_mac" class="form-control" readonly></div>
+                <div class="col-md-4">
+                    <label class="small fw-bold text-primary">SERIAL (CAPTURED)</label>
+                    <input type="text" id="scan_serial" class="form-control active-scan-field" placeholder="Scan Serial..." readonly>
+                </div>
+                <div class="col-md-4">
+                    <label class="small fw-bold">IMEI (OPTIONAL)</label>
+                    <input type="text" id="scan_imei" class="form-control" placeholder="Not Scanned" readonly>
+                </div>
+                <div class="col-md-4">
+                    <label class="small fw-bold">MAC (OPTIONAL)</label>
+                    <input type="text" id="scan_mac" class="form-control" placeholder="Not Scanned" readonly>
+                </div>
             </div>
-            <button id="btn_save" class="btn btn-success btn-lg w-100 mt-3 fw-bold shadow-sm" onclick="saveData()" disabled>SAVE TO DATABASE</button>
+            <button id="btn_manual_save" class="btn btn-success btn-lg w-100 mt-3 fw-bold shadow-sm" onclick="saveData()" disabled>SAVE TO DATABASE</button>
         </div>
     </div>
 
-    <!-- START VIEW -->
+    <!-- START SCREEN -->
     <div id="start_section" class="text-center py-5">
-        <button class="btn btn-primary btn-lg px-5 fw-bold shadow" data-bs-toggle="modal" data-bs-target="#setupModal">Start New Session</button>
+        <div class="card p-5 border-0 shadow-sm">
+            <div class="mb-4">
+                <div class="display-1 text-primary">📦</div>
+                <h3 class="mt-3 fw-bold">Ready to Start?</h3>
+                <p class="text-muted">Configure your session parameters to begin scanning.</p>
+            </div>
+            <button class="btn btn-primary btn-lg px-5 fw-bold shadow" data-bs-toggle="modal" data-bs-target="#setupModal">Start New Session</button>
+        </div>
     </div>
 
     <!-- HISTORY LOG -->
@@ -69,18 +111,25 @@
         <h5 class="mb-3 fw-bold">Recent Activity</h5>
         <div class="table-responsive">
             <table class="table table-hover align-middle">
-                <thead class="table-light"><tr><th>Time</th><th>Item</th><th>Status</th><th>Employee</th><th>Action</th></tr></thead>
+                <thead class="table-light">
+                    <tr><th>Time</th><th>Item Info</th><th>Status</th><th>Employee</th><th>Action</th></tr>
+                </thead>
                 <tbody id="history_body">
                     {% for s in scans %}
-                    <tr>
+                    <tr id="row-{{ s.id }}">
                         <td class="small text-muted">{{ s.timestamp.strftime('%H:%M') }}</td>
-                        <td><strong>{{ s.code }}</strong><br><small>{{ s.device_type }}</small></td>
-                        <td><span class="badge bg-secondary">{{ s.status }}</span></td>
+                        <td>
+                            <div class="fw-bold">{{ s.code }}</div>
+                            <div class="small text-muted">{{ s.device_type }}</div>
+                        </td>
+                        <td><span class="badge rounded-pill bg-secondary status-badge">{{ s.status }}</span></td>
                         <td>{{ s.person_name }} ({{ s.department }})</td>
                         <td>
                             {% if user.is_admin %}
                             <button class="btn btn-sm text-danger" onclick="deleteSingle({{ s.id }})">🗑️</button>
-                            {% else %}<span class="text-muted small">-</span>{% endif %}
+                            {% else %}
+                            <span class="text-muted small">-</span>
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
@@ -91,66 +140,94 @@
 </div>
 
 <!-- SETUP MODAL -->
-<div class="modal fade" id="setupModal" data-bs-backdrop="static">
-    <div class="modal-dialog modal-lg">
+<div class="modal fade" id="setupModal" data-bs-backdrop="static" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content border-0 shadow-lg">
-            <div class="modal-header bg-primary text-white"><h5 class="modal-title fw-bold">Session Setup</h5></div>
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold">Session Configuration</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
             <div class="modal-body p-4">
-                <div class="row mb-3">
-                    <div class="col-md-6"><label class="mandatory-label small fw-bold">Employee Name</label><input type="text" id="m_user" class="form-control"></div>
-                    <div class="col-md-6"><label class="mandatory-label small fw-bold">Employee ID</label><input type="text" id="m_emp_id" class="form-control"></div>
+                <!-- Employee Info -->
+                <div class="row bg-light p-3 rounded mb-4 border">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold mandatory-label">Employee Name</label>
+                        <input type="text" id="m_user" class="form-control" placeholder="Full Name">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold mandatory-label">Employee ID</label>
+                        <input type="text" id="m_emp_id" class="form-control" placeholder="ID Number">
+                    </div>
                 </div>
 
-                <div class="row mb-3">
-                    <div class="col-md-6">
-                        <label class="mandatory-label small fw-bold">Device</label>
+                <!-- Device & Dept -->
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold mandatory-label">Device Type</label>
                         <select id="m_device" class="form-select" onchange="toggleUI()">
-                            <option value="Laptop">Laptop</option><option value="Mobile">Mobile</option><option value="Monitor">Monitor</option><option value="Other">Other</option>
+                            <option value="Laptop">Laptop</option>
+                            <option value="Mobile">Mobile</option>
+                            <option value="Monitor">Monitor</option>
+                            <option value="Printer">Printer</option>
+                            <option value="Other">Other</option>
                         </select>
                         <input type="text" id="m_other_device" class="form-control mt-2 border-primary" style="display:none;" placeholder="Specify Device">
                     </div>
-                    <div class="col-md-6">
-                        <label class="mandatory-label small fw-bold">Department</label>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold mandatory-label">Department</label>
                         <select id="m_dept" class="form-select" onchange="toggleUI()">
-                            <option value="IT">IT</option><option value="FINANCE">FINANCE</option><option value="HR">HR</option><option value="Other">Other</option>
+                            <option value="IT">IT</option>
+                            <option value="FINANCE">FINANCE</option>
+                            <option value="PROCUREMENT">PROCUREMENT</option>
+                            <option value="Other">Other</option>
                         </select>
-                        <input type="text" id="m_other_dept" class="form-control mt-2 border-primary" style="display:none;" placeholder="Specify Department">
+                        <input type="text" id="m_other_dept" class="form-control mt-2 border-primary" style="display:none;" placeholder="Specify Dept">
                     </div>
                 </div>
 
+                <!-- Scan Mode -->
                 <div class="mb-3">
-                    <label class="mandatory-label small fw-bold">Scanning Mode</label>
-                    <div class="btn-group w-100">
+                    <label class="form-label fw-bold mandatory-label">Scanning Mode</label>
+                    <div class="btn-group w-100" role="group">
                         <input type="radio" class="btn-check" name="scan_mode" id="mode_single" value="Single" checked>
-                        <label class="btn btn-outline-primary" for="mode_single">Single (Reload after Save)</label>
+                        <label class="btn btn-outline-primary" for="mode_single">Single Scan</label>
                         <input type="radio" class="btn-check" name="scan_mode" id="mode_multi" value="Multiple">
                         <label class="btn btn-outline-primary" for="mode_multi">Multiple (Continuous)</label>
                     </div>
                 </div>
 
+                <!-- Status -->
                 <div class="mb-4">
-                    <label class="mandatory-label small fw-bold">Status</label>
-                    <div class="btn-group w-100 flex-wrap">
-                        <input type="radio" class="btn-check" name="status" id="st1" value="In Stock" checked onchange="toggleUI()"><label class="btn btn-outline-secondary" for="st1">Stock</label>
-                        <input type="radio" class="btn-check" name="status" id="st2" value="Loaned" onchange="toggleUI()"><label class="btn btn-outline-secondary" for="st2">Loaned</label>
-                        <input type="radio" class="btn-check" name="status" id="st3" value="In Use" onchange="toggleUI()"><label class="btn btn-outline-secondary" for="st3">In Use</label>
-                        <input type="radio" class="btn-check" name="status" id="st4" value="Repair" onchange="toggleUI()"><label class="btn btn-outline-secondary" for="st4">Repair</label>
-                        <input type="radio" class="btn-check" name="status" id="st5" value="Retired" onchange="toggleUI()"><label class="btn btn-outline-secondary" for="st5">Retired</label>
+                    <label class="form-label fw-bold mandatory-label">Status</label>
+                    <div class="btn-group w-100 flex-wrap" role="group">
+                        <input type="radio" class="btn-check" name="status" id="st1" value="In Stock" checked onchange="toggleUI()">
+                        <label class="btn btn-outline-secondary" for="st1">Stock</label>
+                        <input type="radio" class="btn-check" name="status" id="st2" value="Loaned" onchange="toggleUI()">
+                        <label class="btn btn-outline-secondary" for="st2">Loaned</label>
+                        <input type="radio" class="btn-check" name="status" id="st3" value="In Use" onchange="toggleUI()">
+                        <label class="btn btn-outline-secondary" for="st3">In Use</label>
+                        <input type="radio" class="btn-check" name="status" id="st4" value="Repair" onchange="toggleUI()">
+                        <label class="btn btn-outline-secondary" for="st4">Repair</label>
+                        <input type="radio" class="btn-check" name="status" id="st5" value="Retired" onchange="toggleUI()">
+                        <label class="btn btn-outline-secondary" for="st5">Retired</label>
                     </div>
                 </div>
 
-                <div id="g_stock" style="display:none;" class="row">
-                    <div class="col-md-6 mb-3"><label class="mandatory-label small fw-bold">Purchase Date</label><input type="date" id="m_purchase" class="form-control"></div>
-                    <div class="col-md-6 mb-3"><label class="mandatory-label small fw-bold">End Cycle</label><input type="date" id="m_end" class="form-control"></div>
+                <!-- Dynamic Fields -->
+                <div id="dynamic_fields">
+                    <div id="group_stock" class="row" style="display:none;">
+                        <div class="col-md-6 mb-3"><label class="form-label small fw-bold">Purchase Date</label><input type="date" id="m_purchase" class="form-control"></div>
+                        <div class="col-md-6 mb-3"><label class="form-label small fw-bold">End Cycle</label><input type="date" id="m_end" class="form-control"></div>
+                    </div>
+                    <div id="group_loan" class="row" style="display:none;">
+                        <div class="col-md-6 mb-3"><label class="form-label small fw-bold">Email</label><input type="email" id="m_email" class="form-control"></div>
+                        <div class="col-md-6 mb-3"><label class="form-label small fw-bold">Return Date</label><input type="date" id="m_date" class="form-control"></div>
+                    </div>
+                    <div class="mb-3"><label class="form-label small fw-bold">Notes</label><textarea id="m_notes" class="form-control" rows="2"></textarea></div>
+                    <div class="mb-3"><label class="form-label small fw-bold">Photo Upload</label><input type="file" id="m_image" class="form-control" accept="image/*"></div>
                 </div>
-                <div id="g_loan" style="display:none;" class="row">
-                    <div class="col-md-6 mb-3"><label class="mandatory-label small fw-bold">Email</label><input type="email" id="m_email" class="form-control"></div>
-                    <div class="col-md-6 mb-3"><label class="mandatory-label small fw-bold">Return Date</label><input type="date" id="m_date" class="form-control"></div>
-                </div>
-
-                <div class="mb-3"><label class="small fw-bold">Notes</label><textarea id="m_notes" class="form-control" rows="2"></textarea></div>
-                <div class="mb-3"><label class="small fw-bold">Photo</label><input type="file" id="m_image" class="form-control" accept="image/*"></div>
-                
+            </div>
+            <div class="modal-footer border-0">
                 <button class="btn btn-primary w-100 py-3 fw-bold shadow" onclick="confirmSetup()">START SCANNING SESSION</button>
             </div>
         </div>
@@ -158,11 +235,12 @@
 </div>
 
 <!-- PROMPT MODAL -->
-<div class="modal fade" id="promptModal" data-bs-backdrop="static">
+<div class="modal fade" id="promptModal" data-bs-backdrop="static" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg text-center">
-            <div class="modal-body p-4">
-                <h5 class="fw-bold mb-3">Serial Captured</h5>
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-dark text-white"><h5 class="modal-title">Serial Captured</h5></div>
+            <div class="modal-body p-4 text-center">
+                <p>Would you like to add more identifiers or save this record now?</p>
                 <div class="d-grid gap-2">
                     <button class="btn btn-primary py-2 fw-bold" onclick="setNextField('scan_imei')">Scan IMEI</button>
                     <button class="btn btn-info py-2 fw-bold" onclick="setNextField('scan_mac')">Scan MAC</button>
@@ -175,6 +253,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
 <script>
 let scanner, activeFieldId = 'scan_serial', session = {}, promptModal;
 
@@ -191,8 +270,8 @@ function toggleUI() {
     document.getElementById('m_other_device').style.display = (device === 'Other') ? 'block' : 'none';
     document.getElementById('m_other_dept').style.display = (dept === 'Other') ? 'block' : 'none';
     
-    document.getElementById('g_loan').style.display = (status === 'Loaned') ? 'flex' : 'none';
-    document.getElementById('g_stock').style.display = (status === 'In Stock') ? 'flex' : 'none';
+    document.getElementById('group_loan').style.display = (status === 'Loaned') ? 'flex' : 'none';
+    document.getElementById('group_stock').style.display = (status === 'In Stock') ? 'flex' : 'none';
 }
 
 const toBase64 = f => new Promise((res) => {
@@ -209,49 +288,56 @@ async function confirmSetup() {
     let dept = document.getElementById('m_dept').value;
     const scanMode = document.querySelector('input[name="scan_mode"]:checked').value;
 
-    if(!user || !empId) return alert("Please enter Employee Name and ID.");
+    if (!user || !empId) return alert("Employee Name and ID are mandatory.");
     
-    if(device === 'Other') device = document.getElementById('m_other_device').value;
-    if(dept === 'Other') dept = document.getElementById('m_other_dept').value;
+    if (device === 'Other') device = document.getElementById('m_other_device').value;
+    if (dept === 'Other') dept = document.getElementById('m_other_dept').value;
 
-    session = { 
+    session = {
         user, empId, device, dept, scanMode,
         status: document.querySelector('input[name="status"]:checked').value,
-        email: document.getElementById('m_email').value, 
+        email: document.getElementById('m_email').value,
         date: document.getElementById('m_date').value,
-        purchase: document.getElementById('m_purchase').value, 
+        notes: document.getElementById('m_notes').value,
+        purchase: document.getElementById('m_purchase').value,
         end: document.getElementById('m_end').value,
-        notes: document.getElementById('m_notes').value, 
-        image_data: await toBase64(document.getElementById('m_image').files[0]) 
+        image_data: await toBase64(document.getElementById('m_image').files[0])
     };
 
     bootstrap.Modal.getInstance(document.getElementById('setupModal')).hide();
-    document.getElementById('start_section').style.display = 'none';
-    document.getElementById('session_info').style.display = 'block';
-    document.getElementById('scanner_section').style.display = 'block';
-    
-    document.getElementById('ui_user').textContent = user;
-    document.getElementById('ui_empid').textContent = empId;
-    document.getElementById('ui_status').textContent = session.status;
-    document.getElementById('ui_dept').textContent = dept;
-    document.getElementById('ui_device').textContent = device;
-    document.getElementById('ui_mode').textContent = scanMode + " Mode";
-
     startScanner();
 }
 
 function startScanner() {
-    if(!scanner) {
+    document.getElementById('start_section').style.display = 'none';
+    document.getElementById('session_info').style.display = 'block';
+    document.getElementById('scanner_section').style.display = 'block';
+    
+    document.getElementById('ui_user').textContent = session.user;
+    document.getElementById('ui_empid').textContent = session.empId;
+    document.getElementById('ui_status').textContent = session.status;
+    document.getElementById('ui_dept').textContent = session.dept;
+    document.getElementById('ui_device').textContent = session.device;
+    document.getElementById('ui_mode').textContent = session.scanMode + " Mode";
+
+    if (!scanner) {
         scanner = new Html5Qrcode("reader");
     }
-    // SENSITIVITY INCREASED TO 60 FPS
-    scanner.start({ facingMode: "environment" }, { fps: 60, qrbox: 250 }, (text) => {
-        document.getElementById(activeFieldId).value = text;
-        if(activeFieldId === 'scan_serial') {
-            scanner.pause();
-            document.getElementById('btn_save').disabled = false;
-            promptModal.show();
+
+    // High Sensitivity: 60 FPS
+    scanner.start(
+        { facingMode: "environment" }, 
+        { fps: 60, qrbox: 250 }, 
+        (text) => {
+            document.getElementById(activeFieldId).value = text;
+            if (activeFieldId === 'scan_serial') {
+                scanner.pause();
+                document.getElementById('btn_manual_save').disabled = false;
+                promptModal.show();
+            }
         }
+    ).catch(err => {
+        alert("Camera Error: " + err + "\n\nEnsure you are using HTTPS and have granted camera permissions.");
     });
 }
 
@@ -260,39 +346,43 @@ function setNextField(id) {
     activeFieldId = id;
     document.querySelectorAll('#scanner_section input').forEach(i => i.classList.remove('active-scan-field'));
     document.getElementById(id).classList.add('active-scan-field');
-    scanner.resume();
+    if (scanner) scanner.resume();
 }
 
 function saveData() {
     promptModal.hide();
-    const payload = { 
-        ...session, 
-        code: document.getElementById('scan_serial').value, 
-        imei: document.getElementById('scan_imei').value, 
-        mac_address: document.getElementById('scan_mac').value 
+    const payload = {
+        ...session,
+        code: document.getElementById('scan_serial').value,
+        imei: document.getElementById('scan_imei').value,
+        mac_address: document.getElementById('scan_mac').value
     };
 
-    fetch('/scanned', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })
+    fetch('/scanned', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(payload) 
+    })
     .then(r => r.json()).then(d => {
-        if(d.status === 'success') {
+        if (d.status === 'success') {
             document.getElementById('save_toast').style.display = 'block';
             setTimeout(() => { document.getElementById('save_toast').style.display = 'none'; }, 2000);
             
-            if(session.scanMode === 'Multiple') {
-                // RESET FOR NEXT SCAN WITHOUT RELOADING
+            if (session.scanMode === 'Multiple') {
+                // Reset fields and resume
                 document.getElementById('scan_serial').value = '';
                 document.getElementById('scan_imei').value = '';
                 document.getElementById('scan_mac').value = '';
                 activeFieldId = 'scan_serial';
                 document.querySelectorAll('#scanner_section input').forEach(i => i.classList.remove('active-scan-field'));
                 document.getElementById('scan_serial').classList.add('active-scan-field');
-                document.getElementById('btn_save').disabled = true;
-                scanner.resume();
+                document.getElementById('btn_manual_save').disabled = true;
+                if (scanner) scanner.resume();
                 
-                // Add to history table locally
-                const table = document.querySelector('tbody');
-                const row = `<tr><td class="small text-muted">Just Now</td><td><strong>${payload.code}</strong><br><small>${payload.device_type}</small></td><td><span class="badge bg-secondary">${payload.status}</span></td><td>${payload.user}</td><td>-</td></tr>`;
-                table.insertAdjacentHTML('afterbegin', row);
+                // Update local table UI
+                const table = document.getElementById('history_body');
+                const newRow = `<tr><td class="small text-muted">Just Now</td><td><div class="fw-bold">${payload.code}</div><div class="small text-muted">${payload.device}</div></td><td><span class="badge rounded-pill bg-secondary status-badge">${payload.status}</span></td><td>${payload.user}</td><td>-</td></tr>`;
+                table.insertAdjacentHTML('afterbegin', newRow);
             } else {
                 location.reload();
             }
@@ -301,9 +391,12 @@ function saveData() {
 }
 
 function deleteSingle(id) {
-    if(confirm("Delete this record permanently?")) {
-        fetch('/delete', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ids: [id]}) })
-        .then(() => location.reload());
+    if (confirm("Permanently delete this record?")) {
+        fetch('/delete', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ ids: [id] }) 
+        }).then(() => location.reload());
     }
 }
 </script>
