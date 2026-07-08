@@ -324,10 +324,28 @@ function startScanner() {
         scanner = new Html5Qrcode("reader");
     }
 
-    // High Sensitivity: 60 FPS
+    // ENHANCED SCANNING CONFIGURATION
+    const config = {
+        fps: 30, 
+        qrbox: (viewfinderWidth, viewfinderHeight) => {
+            let minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+            let boxSize = Math.floor(minEdge * 0.7);
+            return { width: boxSize, height: boxSize };
+        },
+        videoConstraints: {
+            facingMode: "environment",
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+        },
+        aspectRatio: 1.0,
+        experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true 
+        }
+    };
+
     scanner.start(
         { facingMode: "environment" }, 
-        { fps: 60, qrbox: 250 }, 
+        config, 
         (text) => {
             document.getElementById(activeFieldId).value = text;
             if (activeFieldId === 'scan_serial') {
@@ -337,7 +355,9 @@ function startScanner() {
             }
         }
     ).catch(err => {
-        alert("Camera Error: " + err + "\n\nEnsure you are using HTTPS and have granted camera permissions.");
+        console.error("High-res failed, retrying with default", err);
+        scanner.start({ facingMode: "environment" }, { fps: 20, qrbox: 250 })
+            .catch(e => alert("Camera Error: " + e));
     });
 }
 
