@@ -6,25 +6,39 @@
     <title>Inventory Control Pro</title>
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- QR/Barcode Scanner Library -->
-    <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body { background-color: #f4f7f6; padding: 20px; font-family: 'Segoe UI', sans-serif; }
         .card { border: none; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); margin-bottom: 20px; }
-        
+
         /* Scanner Container Fixes */
-        #reader { 
-            width: 100%; 
-            min-height: 300px; 
-            background: #000; 
-            border-radius: 15px; 
-            overflow: hidden; 
+        #reader {
+            width: 100%;
+            min-height: 300px;
+            background: #000;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
         }
         #reader video {
             width: 100% !important;
             height: auto !important;
             border-radius: 15px;
+            display: block;
         }
+        #scan-box-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 70%;
+            aspect-ratio: 1 / 1;
+            max-width: 280px;
+            border: 3px solid rgba(13,110,253,0.9);
+            border-radius: 12px;
+            pointer-events: none;
+            box-shadow: 0 0 0 9999px rgba(0,0,0,0.35);
+        }
+        #scanner-controls { display: none; }
 
         .session-info-bar { display: none; background: #fff; border-left: 6px solid #0d6efd; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
         .active-scan-field { border: 3px solid #0d6efd !important; background-color: #e7f1ff !important; }
@@ -75,7 +89,21 @@
     <!-- SCANNER VIEW -->
     <div id="scanner_section" style="display:none;">
         <div class="card p-3">
-            <div id="reader"></div>
+            <div id="reader">
+                <video id="scanner-video" playsinline muted autoplay></video>
+                <canvas id="scanner-canvas" style="display:none;"></canvas>
+                <div id="scan-box-overlay"></div>
+            </div>
+
+            <div id="scanner-controls" class="d-flex align-items-center gap-3 mt-2">
+                <button type="button" class="btn btn-sm btn-outline-dark" id="btn_torch" onclick="toggleTorch()" style="display:none;">🔦 Torch</button>
+                <div class="flex-grow-1 d-flex align-items-center gap-2" id="zoom-wrap" style="display:none;">
+                    <span class="small fw-bold">Zoom</span>
+                    <input type="range" id="zoom_slider" class="form-range" min="1" max="1" step="0.1" value="1" oninput="setZoomLevel(this.value)">
+                </div>
+                <span class="small text-muted" id="scan_engine_status">Loading scanner engine…</span>
+            </div>
+
             <div class="row mt-3 g-2">
                 <div class="col-md-4">
                     <label class="small fw-bold text-primary">SERIAL (CAPTURED)</label>
@@ -254,6 +282,38 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
+<!-- ===================================================================
+     Multi-format barcode/QR engine (zxing-wasm) loaded as a module.
+     It exposes readBarcodes/prepareZXingModule on window so the main
+     classic script below (used by all your existing onclick handlers)
+     can call it without needing to become a module itself.
+     Covers: Aztec, Codabar, Code39, Code93, Code128, DataMatrix,
+     EAN-8/13, ITF (Interleaved 2 of 5), MicroQRCode, PDF417, QRCode,
+     DataBar (RSS-14), DataBarExpanded (RSS Expanded), UPC-A/E.
+     =================================================================== -->
+<script type="module">
+    import { readBarcodes, prepareZXingModule } from "https://esm.sh/zxing-wasm/reader";
+
+    window.ZXING_ALL_FORMATS = [
+        "Aztec", "Codabar", "Code39", "Code93", "Code128",
+        "DataMatrix", "EAN-8", "EAN-13", "ITF",
+        "MicroQRCode", "PDF417", "QRCode",
+        "DataBar", "DataBarExpanded", "UPCA", "UPCE"
+    ];
+
+    window.zxingReady = prepareZXingModule()
+        .then(() => {
+            window.zxingReadBarcodes = readBarcodes;
+            const statusEl = document.getElementById('scan_engine_status');
+            if (statusEl) statusEl.textContent = 'Scanner engine ready';
+        })
+        .catch(err => {
+            console.error('Failed to load zxing-wasm', err);
+            const statusEl = document.getElementById('scan_engine_status');
+            if (statusEl) statusEl.textContent = 'Scanner engine failed to load';
+        });
+</script>
+
 <script>
 let scanner, activeFieldId = 'scan_serial', session = {}, promptModal;
 
@@ -269,7 +329,7 @@ function toggleUI() {
 
     document.getElementById('m_other_device').style.display = (device === 'Other') ? 'block' : 'none';
     document.getElementById('m_other_dept').style.display = (dept === 'Other') ? 'block' : 'none';
-    
+
     document.getElementById('group_loan').style.display = (status === 'Loaned') ? 'flex' : 'none';
     document.getElementById('group_stock').style.display = (status === 'In Stock') ? 'flex' : 'none';
 }
@@ -289,7 +349,7 @@ async function confirmSetup() {
     const scanMode = document.querySelector('input[name="scan_mode"]:checked').value;
 
     if (!user || !empId) return alert("Employee Name and ID are mandatory.");
-    
+
     if (device === 'Other') device = document.getElementById('m_other_device').value;
     if (dept === 'Other') dept = document.getElementById('m_other_dept').value;
 
@@ -308,11 +368,172 @@ async function confirmSetup() {
     startScanner();
 }
 
-function startScanner() {
+// ============================================================
+// MultiFormatScanner: replaces the old Html5Qrcode integration.
+// Handles camera setup at the highest resolution available,
+// continuous autofocus, torch/zoom controls, and a decode loop
+// that runs every frame through zxing-wasm across all formats.
+// ============================================================
+class MultiFormatScanner {
+    constructor(videoEl, canvasEl, onResult) {
+        this.video = videoEl;
+        this.canvas = canvasEl;
+        this.ctx = canvasEl.getContext('2d', { willReadFrequently: true });
+        this.onResult = onResult;
+        this.running = false;
+        this.paused = false;
+        this.locked = false;
+        this.track = null;
+    }
+
+    async start() {
+        // Try the highest-quality constraints first, then fall back.
+        const attempts = [
+            { facingMode: { ideal: 'environment' }, width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 30 } },
+            { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
+            { facingMode: 'environment' }
+        ];
+
+        let stream = null, lastErr = null;
+        for (const videoConstraints of attempts) {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
+                break;
+            } catch (e) {
+                lastErr = e;
+            }
+        }
+        if (!stream) throw lastErr || new Error('Camera unavailable');
+
+        this.track = stream.getVideoTracks()[0];
+        this.video.srcObject = stream;
+        await this.video.play();
+
+        // Continuous autofocus where supported (helps a lot with 1D codes).
+        const caps = this.track.getCapabilities ? this.track.getCapabilities() : {};
+        if (caps.focusMode && caps.focusMode.includes('continuous')) {
+            await this.track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+        }
+
+        // Wire up torch button if supported.
+        const torchBtn = document.getElementById('btn_torch');
+        if (caps.torch) {
+            torchBtn.style.display = 'inline-block';
+            this._torchOn = false;
+        } else {
+            torchBtn.style.display = 'none';
+        }
+
+        // Wire up zoom slider if supported.
+        const zoomWrap = document.getElementById('zoom-wrap');
+        const zoomSlider = document.getElementById('zoom_slider');
+        if (caps.zoom) {
+            zoomWrap.style.display = 'flex';
+            zoomSlider.min = caps.zoom.min;
+            zoomSlider.max = caps.zoom.max;
+            zoomSlider.step = caps.zoom.step || 0.1;
+            zoomSlider.value = this.track.getSettings().zoom || caps.zoom.min;
+        } else {
+            zoomWrap.style.display = 'none';
+        }
+
+        document.getElementById('scanner-controls').style.display = 'flex';
+
+        this.running = true;
+        this.paused = false;
+        this._loop();
+    }
+
+    async toggleTorch() {
+        const caps = this.track && this.track.getCapabilities ? this.track.getCapabilities() : {};
+        if (!caps.torch) return;
+        this._torchOn = !this._torchOn;
+        await this.track.applyConstraints({ advanced: [{ torch: this._torchOn }] }).catch(() => {});
+        return this._torchOn;
+    }
+
+    async setZoom(value) {
+        if (!this.track) return;
+        const caps = this.track.getCapabilities ? this.track.getCapabilities() : {};
+        if (!caps.zoom) return;
+        await this.track.applyConstraints({ advanced: [{ zoom: parseFloat(value) }] }).catch(() => {});
+    }
+
+    pause() {
+        this.paused = true;
+    }
+
+    resume() {
+        this.paused = false;
+        this.locked = false;
+    }
+
+    _loop = async () => {
+        if (!this.running) return;
+
+        if (this.paused || this.locked || !window.zxingReadBarcodes) {
+            setTimeout(() => requestAnimationFrame(this._loop), 100);
+            return;
+        }
+
+        const vw = this.video.videoWidth;
+        const vh = this.video.videoHeight;
+
+        if (vw && vh) {
+            // Crop to a centered square region matching the on-screen scan box.
+            const cropSize = Math.floor(Math.min(vw, vh) * 0.7);
+            const sx = (vw - cropSize) / 2;
+            const sy = (vh - cropSize) / 2;
+
+            this.canvas.width = cropSize;
+            this.canvas.height = cropSize;
+            this.ctx.drawImage(this.video, sx, sy, cropSize, cropSize, 0, 0, cropSize, cropSize);
+
+            try {
+                const imageData = this.ctx.getImageData(0, 0, cropSize, cropSize);
+                const results = await window.zxingReadBarcodes(imageData, {
+                    formats: window.ZXING_ALL_FORMATS,
+                    tryHarder: true,
+                    maxNumberOfSymbols: 1
+                });
+
+                if (results && results.length && !this.paused && !this.locked) {
+                    this.locked = true; // prevent duplicate triggers while the UI reacts
+                    this.onResult(results[0].text, results[0].format);
+                }
+            } catch (e) {
+                // No barcode in this frame — normal, keep scanning.
+            }
+        }
+
+        // ~10-12 fps; tryHarder decoding is heavier than QR-only decoding,
+        // this keeps CPU usage reasonable while staying responsive.
+        setTimeout(() => requestAnimationFrame(this._loop), 80);
+    };
+
+    stop() {
+        this.running = false;
+        if (this.track) this.track.stop();
+    }
+}
+
+async function toggleTorch() {
+    if (!scanner) return;
+    const on = await scanner.toggleTorch();
+    const btn = document.getElementById('btn_torch');
+    btn.classList.toggle('btn-warning', !!on);
+    btn.classList.toggle('btn-outline-dark', !on);
+}
+
+function setZoomLevel(value) {
+    if (scanner) scanner.setZoom(value);
+}
+
+async function startScanner() {
     document.getElementById('start_section').style.display = 'none';
     document.getElementById('session_info').style.display = 'block';
     document.getElementById('scanner_section').style.display = 'block';
-    
+
     document.getElementById('ui_user').textContent = session.user;
     document.getElementById('ui_empid').textContent = session.empId;
     document.getElementById('ui_status').textContent = session.status;
@@ -321,44 +542,29 @@ function startScanner() {
     document.getElementById('ui_mode').textContent = session.scanMode + " Mode";
 
     if (!scanner) {
-        scanner = new Html5Qrcode("reader");
-    }
-
-    // ENHANCED SCANNING CONFIGURATION
-    const config = {
-        fps: 30, 
-        qrbox: (viewfinderWidth, viewfinderHeight) => {
-            let minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-            let boxSize = Math.floor(minEdge * 0.7);
-            return { width: boxSize, height: boxSize };
-        },
-        videoConstraints: {
-            facingMode: "environment",
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
-        },
-        aspectRatio: 1.0,
-        experimentalFeatures: {
-            useBarCodeDetectorIfSupported: true 
-        }
-    };
-
-    scanner.start(
-        { facingMode: "environment" }, 
-        config, 
-        (text) => {
+        const videoEl = document.getElementById('scanner-video');
+        const canvasEl = document.getElementById('scanner-canvas');
+        scanner = new MultiFormatScanner(videoEl, canvasEl, (text) => {
             document.getElementById(activeFieldId).value = text;
             if (activeFieldId === 'scan_serial') {
                 scanner.pause();
                 document.getElementById('btn_manual_save').disabled = false;
                 promptModal.show();
+            } else {
+                // For IMEI/MAC fields, unlock immediately so continuous
+                // scanning of the same field doesn't feel stuck.
+                scanner.locked = false;
             }
-        }
-    ).catch(err => {
-        console.error("High-res failed, retrying with default", err);
-        scanner.start({ facingMode: "environment" }, { fps: 20, qrbox: 250 })
-            .catch(e => alert("Camera Error: " + e));
-    });
+        });
+    }
+
+    await window.zxingReady; // make sure the wasm engine is loaded first
+    try {
+        await scanner.start();
+    } catch (err) {
+        console.error("Camera error", err);
+        alert("Camera Error: " + err.message);
+    }
 }
 
 function setNextField(id) {
@@ -378,16 +584,16 @@ function saveData() {
         mac_address: document.getElementById('scan_mac').value
     };
 
-    fetch('/scanned', { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify(payload) 
+    fetch('/scanned', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
     })
     .then(r => r.json()).then(d => {
         if (d.status === 'success') {
             document.getElementById('save_toast').style.display = 'block';
             setTimeout(() => { document.getElementById('save_toast').style.display = 'none'; }, 2000);
-            
+
             if (session.scanMode === 'Multiple') {
                 // Reset fields and resume
                 document.getElementById('scan_serial').value = '';
@@ -398,7 +604,7 @@ function saveData() {
                 document.getElementById('scan_serial').classList.add('active-scan-field');
                 document.getElementById('btn_manual_save').disabled = true;
                 if (scanner) scanner.resume();
-                
+
                 // Update local table UI
                 const table = document.getElementById('history_body');
                 const newRow = `<tr><td class="small text-muted">Just Now</td><td><div class="fw-bold">${payload.code}</div><div class="small text-muted">${payload.device}</div></td><td><span class="badge rounded-pill bg-secondary status-badge">${payload.status}</span></td><td>${payload.user}</td><td>-</td></tr>`;
@@ -412,10 +618,10 @@ function saveData() {
 
 function deleteSingle(id) {
     if (confirm("Permanently delete this record?")) {
-        fetch('/delete', { 
-            method: 'POST', 
-            headers: { 'Content-Type': 'application/json' }, 
-            body: JSON.stringify({ ids: [id] }) 
+        fetch('/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: [id] })
         }).then(() => location.reload());
     }
 }
