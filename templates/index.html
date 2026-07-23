@@ -297,22 +297,22 @@
      DataBar (RSS-14), DataBarExpanded (RSS Expanded), UPC-A/E.
      =================================================================== -->
 <script type="module">
-    import { readBarcodes } from "https://esm.sh/zxing-wasm@1.3.4/reader";
+    import { readBarcodes } from "https://esm.sh/zxing-wasm@3.1.2/reader";
 
+    // v3 canonical format names (note: EAN13/EAN8, not EAN-13/EAN-8)
     window.ZXING_ALL_FORMATS = [
         "Aztec","Codabar","Code39","Code93","Code128","DataMatrix",
-        "EAN-8","EAN-13","ITF","MicroQRCode","PDF417","QRCode",
+        "EAN8","EAN13","ITF","MicroQRCode","PDF417","QRCode",
         "DataBar","DataBarExpanded","UPCA","UPCE"
     ];
 
     const statusEl = document.getElementById('scan_engine_status');
-    // v1 has no prepareZXingModule; wasm loads on first readBarcodes call.
-    window.zxingReadBarcodes = readBarcodes;
+    window.zxingReadBarcodes = readBarcodes;   // wasm auto-loads on first call
     window.zxingReady = Promise.resolve();
-    if (window.zxingReady && window.zxingReady.catch) {
-    window.zxingReady.catch(() => alert("Scanner engine failed to load."));
-}
+    if (statusEl) statusEl.textContent = 'Scanner engine ready';
+    console.log('[zxing] v3 reader imported');
 </script>
+
 
 
 
@@ -581,7 +581,9 @@ async function startScanner() {
 
     // Decoder loop already skips frames until window.zxingReadBarcodes exists,
     // so we don't need to block on it. But warn if it never loads:
-    window.zxingReady.catch(() => alert("Scanner engine failed to load (network/esm.sh blocked)."));
+    if (window.zxingReady && window.zxingReady.catch) {
+    window.zxingReady.catch(() => alert("Scanner engine failed to load."));
+}
 }
 
 
