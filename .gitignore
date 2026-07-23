@@ -3,6 +3,7 @@
 .env
 # If you have a local instance folder with a database file
 instance/
+zxing-wasm/
 
 # --- Python & System ---
 # Ignore compiled Python files
