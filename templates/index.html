@@ -557,39 +557,31 @@ async function startScanner() {
     document.getElementById('start_section').style.display = 'none';
     document.getElementById('session_info').style.display = 'block';
     document.getElementById('scanner_section').style.display = 'block';
-
-    document.getElementById('ui_user').textContent = session.user;
-    document.getElementById('ui_empid').textContent = session.empId;
-    document.getElementById('ui_status').textContent = session.status;
-    document.getElementById('ui_dept').textContent = session.dept;
-    document.getElementById('ui_device').textContent = session.device;
-    document.getElementById('ui_mode').textContent = session.scanMode + " Mode";
+    // ... your ui_user / ui_status etc. lines ...
 
     if (!scanner) {
         const videoEl = document.getElementById('scanner-video');
         const canvasEl = document.getElementById('scanner-canvas');
         scanner = new MultiFormatScanner(videoEl, canvasEl, (text) => {
-            document.getElementById(activeFieldId).value = text;
-            if (activeFieldId === 'scan_serial') {
-                scanner.pause();
-                document.getElementById('btn_manual_save').disabled = false;
-                promptModal.show();
-            } else {
-                // For IMEI/MAC fields, unlock immediately so continuous
-                // scanning of the same field doesn't feel stuck.
-                scanner.locked = false;
-            }
+            if (activeFieldId === 'scan_serial') { scanner.pause(); onSerialScanned(text); }
+            else { document.getElementById(activeFieldId).value = text; scanner.locked = false; }
         });
     }
 
-    await window.zxingReady; // make sure the wasm engine is loaded first
+    // Start the camera FIRST so the user sees video even if zxing is slow.
     try {
         await scanner.start();
     } catch (err) {
         console.error("Camera error", err);
-        alert("Camera Error: " + err.message);
+        alert("Camera Error: " + err.message);   // this will now actually fire
+        return;
     }
+
+    // Decoder loop already skips frames until window.zxingReadBarcodes exists,
+    // so we don't need to block on it. But warn if it never loads:
+    window.zxingReady.catch(() => alert("Scanner engine failed to load (network/esm.sh blocked)."));
 }
+
 
 function setNextField(id) {
     promptModal.hide();
