@@ -607,7 +607,7 @@ function setNextField(id) {
 function saveData() {
     promptModal.hide();
     const payload = {
-        ...session,
+        ...cfg,                              // ✅ cfg holds user/empId/device/dept/status/scanMode
         code: document.getElementById('scan_serial').value,
         imei: document.getElementById('scan_imei').value,
         mac_address: document.getElementById('scan_mac').value
@@ -623,7 +623,7 @@ function saveData() {
             document.getElementById('save_toast').style.display = 'block';
             setTimeout(() => { document.getElementById('save_toast').style.display = 'none'; }, 2000);
 
-            if (session.scanMode === 'Multiple') {
+            if (cfg.scanMode === 'Multiple') {
                 // Reset fields and resume
                 document.getElementById('scan_serial').value = '';
                 document.getElementById('scan_imei').value = '';
