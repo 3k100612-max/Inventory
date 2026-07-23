@@ -559,7 +559,13 @@ async function startScanner() {
     document.getElementById('start_section').style.display = 'none';
     document.getElementById('session_info').style.display = 'block';
     document.getElementById('scanner_section').style.display = 'block';
-    // ... your ui_user / ui_status etc. lines ...
+
+    document.getElementById('ui_user').textContent = cfg.user;
+    document.getElementById('ui_empid').textContent = cfg.empId;
+    document.getElementById('ui_status').textContent = cfg.status;
+    document.getElementById('ui_dept').textContent = cfg.dept;
+    document.getElementById('ui_device').textContent = cfg.device;
+    document.getElementById('ui_mode').textContent = cfg.scanMode + " Mode";
 
     if (!scanner) {
         const videoEl = document.getElementById('scanner-video');
@@ -569,6 +575,22 @@ async function startScanner() {
             else { document.getElementById(activeFieldId).value = text; scanner.locked = false; }
         });
     }
+
+    // Start camera first so video shows even if the engine is slow
+    try {
+        await scanner.start();
+    } catch (err) {
+        console.error("Camera error", err);
+        alert("Camera Error: " + err.message);
+        return;
+    }
+
+    // <-- PUT THE GUARD HERE (replaces the old crashing line 777)
+    if (window.zxingReady && window.zxingReady.catch) {
+        window.zxingReady.catch(() => alert("Scanner engine failed to load."));
+    }
+}
+
 
     // Start the camera FIRST so the user sees video even if zxing is slow.
     try {
