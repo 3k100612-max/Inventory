@@ -17,8 +17,7 @@ db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-# ---------------- MODELS ----------------
-
+# --- SECURITY HEADERS (Content Security Policy) ---
 @app.after_request
 def add_csp(resp):
     resp.headers['Content-Security-Policy'] = (
@@ -28,6 +27,10 @@ def add_csp(resp):
         "connect-src 'self' https://esm.sh https://cdn.jsdelivr.net;"
     )
     return resp
+
+# ---------------- MODELS ----------------
+
+
 
 class User(UserMixin, db.Model):
     __tablename__ = 'user'
