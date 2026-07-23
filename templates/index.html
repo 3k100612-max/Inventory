@@ -297,7 +297,7 @@
      DataBar (RSS-14), DataBarExpanded (RSS Expanded), UPC-A/E.
      =================================================================== -->
 <script type="module">
-    import { readBarcodes, prepareZXingModule } from "https://esm.sh/zxing-wasm@1.3.4/reader";
+    import { readBarcodes } from "https://esm.sh/zxing-wasm@1.3.4/reader";
 
     window.ZXING_ALL_FORMATS = [
         "Aztec","Codabar","Code39","Code93","Code128","DataMatrix",
@@ -306,26 +306,14 @@
     ];
 
     const statusEl = document.getElementById('scan_engine_status');
-
-    window.zxingReady = prepareZXingModule({
-        // Explicitly point at the wasm so a bad relative-path guess can't hang it.
-        overrides: {
-            locateFile: (path, prefix) =>
-                path.endsWith('.wasm')
-                    ? `https://esm.sh/zxing-wasm@1.3.4/dist/reader/${path}`
-                    : prefix + path
-        }
-    })
-    .then(() => {
-        window.zxingReadBarcodes = readBarcodes;
-        if (statusEl) statusEl.textContent = 'Scanner engine ready';
-        console.log('[zxing] ready');
-    })
-    .catch(err => {
-        console.error('[zxing] failed', err);
-        if (statusEl) statusEl.textContent = 'Scanner engine failed: ' + err.message;
-    });
+    // v1 has no prepareZXingModule; wasm loads on first readBarcodes call.
+    window.zxingReadBarcodes = readBarcodes;
+    window.zxingReady = Promise.resolve();
+    if (window.zxingReady && window.zxingReady.catch) {
+    window.zxingReady.catch(() => alert("Scanner engine failed to load."));
+}
 </script>
+
 
 
 <script>
