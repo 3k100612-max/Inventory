@@ -341,20 +341,18 @@ const toBase64 = f => new Promise((res) => {
     r.onload = () => res(r.result);
 });
 
+let scanner, activeFieldId = 'scan_serial', cfg = {}, promptModal, pendingIdentifiers = [];
+
+// SETUP: send raw form to Python, let it validate + return config
 async function confirmSetup() {
-    const user = document.getElementById('m_user').value;
-    const empId = document.getElementById('m_emp_id').value;
-    let device = document.getElementById('m_device').value;
-    let dept = document.getElementById('m_dept').value;
-    const scanMode = document.querySelector('input[name="scan_mode"]:checked').value;
-
-    if (!user || !empId) return alert("Employee Name and ID are mandatory.");
-
-    if (device === 'Other') device = document.getElementById('m_other_device').value;
-    if (dept === 'Other') dept = document.getElementById('m_other_dept').value;
-
-    session = {
-        user, empId, device, dept, scanMode,
+    const body = {
+        user: document.getElementById('m_user').value,
+        empId: document.getElementById('m_emp_id').value,
+        device: document.getElementById('m_device').value,
+        otherDevice: document.getElementById('m_other_device').value,
+        dept: document.getElementById('m_dept').value,
+        otherDept: document.getElementById('m_other_dept').value,
+        scanMode: document.querySelector('input[name="scan_mode"]:checked').value,
         status: document.querySelector('input[name="status"]:checked').value,
         email: document.getElementById('m_email').value,
         date: document.getElementById('m_date').value,
@@ -363,10 +361,36 @@ async function confirmSetup() {
         end: document.getElementById('m_end').value,
         image_data: await toBase64(document.getElementById('m_image').files[0])
     };
+    const res = await fetch('/session/start', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body)
+    }).then(r => r.json());
 
+    if (!res.ok) return alert(res.error);   // Python decided it's invalid
+    cfg = res.config;                         // Python is the source of truth
     bootstrap.Modal.getInstance(document.getElementById('setupModal')).hide();
     startScanner();
 }
+
+// On every serial scan, ASK Python whether to accept it
+function onSerialScanned(text) {
+    fetch('/scan/check', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ code: text })
+    }).then(r => r.json()).then(res => {
+        if (!res.ok || !res.accept) {
+            alert(res.reason || res.error || "Rejected");
+            if (scanner) scanner.resume();     // Python rejected -> keep scanning
+            return;
+        }
+        document.getElementById('scan_serial').value = res.code;
+        document.getElementById('btn_manual_save').disabled = false;
+        // Python tells us which identifiers to still collect
+        pendingIdentifiers = res.nextIdentifiers || [];
+        promptModal.show();
+    });
+}
+
 
 // ============================================================
 // MultiFormatScanner: replaces the old Html5Qrcode integration.
