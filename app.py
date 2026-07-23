@@ -286,5 +286,69 @@ def delete_scans():
     db.session.commit()
     return jsonify({"status": "success"})
 
+# ---------------- EXPORT TO EXCEL ----------------
+@app.route('/export/excel')
+@login_required
+def export_excel():
+    scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).all()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Inventory"
+
+    headers = [
+        "Timestamp", "Serial/Code", "Device Type", "IMEI", "MAC Address",
+        "Department", "Status", "Employee Name", "Employee ID", "Email",
+        "Purchase Date", "Return Date", "End of Cycle", "Reason", "Notes"
+    ]
+    ws.append(headers)
+
+    header_fill = PatternFill(start_color="0D6EFD", end_color="0D6EFD", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True)
+    for col_num, _ in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=col_num)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center")
+
+    for s in scans:
+        ws.append([
+            s.timestamp.strftime('%Y-%m-%d %H:%M:%S') if s.timestamp else "",
+            s.code,
+            s.device_type,
+            s.imei or "",
+            s.mac_address or "",
+            s.department or "",
+            s.status,
+            s.person_name or "",
+            s.employee_id or "",
+            s.email or "",
+            s.purchase_date.strftime('%Y-%m-%d') if s.purchase_date else "",
+            s.return_date.strftime('%Y-%m-%d') if s.return_date else "",
+            s.end_of_cycle.strftime('%Y-%m-%d') if s.end_of_cycle else "",
+            s.reason or "",
+            s.notes or "",
+        ])
+
+    # Auto-width columns (rough heuristic based on content length)
+    for col_cells in ws.columns:
+        length = max((len(str(c.value)) if c.value is not None else 0) for c in col_cells)
+        col_letter = col_cells[0].column_letter
+        ws.column_dimensions[col_letter].width = min(max(length + 2, 10), 40)
+
+    ws.freeze_panes = "A2"
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    filename = f"inventory_export_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8506)
