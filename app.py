@@ -342,11 +342,20 @@ def export_excel():
     wb.save(buf)
     buf.seek(0)
 
-    filename = f"inventory_export_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+   filename = f"inventory_export_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+try:
     return send_file(
         buf,
         as_attachment=True,
         download_name=filename,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+except TypeError:
+    # Older Flask (<2.0) uses attachment_filename instead of download_name
+    return send_file(
+        buf,
+        as_attachment=True,
+        attachment_filename=filename,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
      
