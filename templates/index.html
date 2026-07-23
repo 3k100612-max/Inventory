@@ -297,21 +297,27 @@
      DataBar (RSS-14), DataBarExpanded (RSS Expanded), UPC-A/E.
      =================================================================== -->
 <script type="module">
-    import { readBarcodes } from "https://esm.sh/zxing-wasm@3.1.2/reader";
+    import { readBarcodes, setZXingModuleOverrides }
+        from "https://esm.sh/zxing-wasm@3.1.2/reader";
 
-    // v3 canonical format names (note: EAN13/EAN8, not EAN-13/EAN-8)
+    // Force zxing to load the wasm from YOUR server, not a CDN
+    setZXingModuleOverrides({
+        locateFile: (path) =>
+            path.endsWith('.wasm')
+                ? "/static/zxing_reader.wasm"   // served by Flask, same-origin
+                : path
+    });
+
     window.ZXING_ALL_FORMATS = [
         "Aztec","Codabar","Code39","Code93","Code128","DataMatrix",
         "EAN8","EAN13","ITF","MicroQRCode","PDF417","QRCode",
         "DataBar","DataBarExpanded","UPCA","UPCE"
     ];
-
-    const statusEl = document.getElementById('scan_engine_status');
-    window.zxingReadBarcodes = readBarcodes;   // wasm auto-loads on first call
+    window.zxingReadBarcodes = readBarcodes;
     window.zxingReady = Promise.resolve();
-    if (statusEl) statusEl.textContent = 'Scanner engine ready';
-    console.log('[zxing] v3 reader imported');
+    document.getElementById('scan_engine_status').textContent = 'Scanner engine ready';
 </script>
+
 
 
 
