@@ -5,6 +5,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy import text
+from sqlalchemy import func
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'change-this-in-hostinger-settings')
@@ -51,6 +52,7 @@ class InventoryScan(db.Model):
     email = db.Column(db.String(120))
     return_date = db.Column(db.Date); purchase_date = db.Column(db.Date); end_of_cycle = db.Column(db.Date)
     notes = db.Column(db.Text); image_data = db.Column(db.Text)
+    reason = db.Column(db.Text)   # NEW — why a Retired unit was reactivated, etc.
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
 @login_manager.user_loader
@@ -87,8 +89,9 @@ def init_db():
         try:
             db.create_all()
             try:
-                db.session.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE'))
-                db.session.commit()
+               db.session.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE'))
+               db.session.execute(text('ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS reason TEXT'))
+               db.session.commit()
             except Exception: db.session.rollback()
             if not User.query.filter_by(username='admin').first():
                 db.session.add(User(username='admin', password=generate_password_hash('P12345'), is_admin=True))
@@ -125,9 +128,14 @@ def logout():
 @login_required
 def index():
     scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(50).all()
-    # Ship the rules to the template so the client renders, not decides.
+    repair_counts = dict(
+        db.session.query(InventoryScan.code, func.count(InventoryScan.id))
+        .filter(InventoryScan.status == 'Repair').group_by(InventoryScan.code).all()
+    )
+    flagged_codes = {c for c, n in repair_counts.items() if n >= 3}
     return render_template('index.html', scans=scans, user=current_user,
-                           device_types=DEVICE_TYPES, departments=DEPARTMENTS, statuses=STATUSES)
+                           device_types=DEVICE_TYPES, departments=DEPARTMENTS, statuses=STATUSES,
+                           flagged_codes=flagged_codes)
 
 # ---------------- SESSION: Python validates + owns config ----------------
 @app.route('/session/start', methods=['POST'])
@@ -176,15 +184,42 @@ def scan_check():
     if not code:
         return jsonify({"ok": False, "accept": False, "reason": "Empty code"}), 200
 
-    # Rule: reject duplicates already in DB.
-    dup = InventoryScan.query.filter_by(code=code).first()
-    if dup:
-        return jsonify({"ok": True, "accept": False,
-                        "reason": f"Serial '{code}' already exists (id {dup.id})."})
+    new_status = cfg.get("status")
+    last = InventoryScan.query.filter_by(code=code).order_by(InventoryScan.timestamp.desc()).first()
 
-    # Python decides what the client should scan next.
-    return jsonify({"ok": True, "accept": True, "code": code,
-                    "nextIdentifiers": cfg.get("identifiers", [])})
+    result = {
+        "ok": True, "accept": True, "code": code,
+        "nextIdentifiers": cfg.get("identifiers", []),
+        "confirmMessage": None,
+        "requireReason": False,
+        "flag": None
+    }
+
+    if last:
+        current = last.status
+
+        if current == "In Stock":
+            result["confirmMessage"] = f"Serial '{code}' was already scanned (In Stock). Save this record again?"
+
+        elif current == "Loaned" and new_status == "In Use":
+            result["confirmMessage"] = (f"Serial '{code}' is currently Loaned and has not been returned. "
+                                         f"It will be updated to In Use. Continue?")
+
+        elif current == "In Use" and new_status == "In Use":
+            result["confirmMessage"] = f"Serial '{code}' is already In Use. Save this record again?"
+
+        elif current == "Repair":
+            repair_count = InventoryScan.query.filter_by(code=code, status="Repair").count()
+            if repair_count >= 3:
+                result["flag"] = "red"
+                result["confirmMessage"] = (f"⚠️ Serial '{code}' has already been tagged for Repair "
+                                             f"{repair_count} times. Save anyway?")
+
+        elif current == "Retired" and new_status == "In Use":
+            result["requireReason"] = True
+            result["confirmMessage"] = f"Serial '{code}' is Retired. Provide a reason to reactivate it to In Use."
+
+    return jsonify(result)
 
 # ---------------- SAVE: uses server-side session, not client claims ----------------
 @app.route('/scanned', methods=['POST'])
@@ -197,8 +232,13 @@ def scanned():
     code = sanitize(d.get('code'))
     if not code:
         return jsonify({"status": "error", "message": "Serial is required."}), 400
-    if InventoryScan.query.filter_by(code=code).first():
-        return jsonify({"status": "error", "message": "Duplicate serial."}), 409
+
+    reason = sanitize(d.get('reason'), 500)
+    last = InventoryScan.query.filter_by(code=code).order_by(InventoryScan.timestamp.desc()).first()
+
+    if last and last.status == "Retired" and cfg["status"] == "In Use" and not reason:
+        return jsonify({"status": "error", "message": "A reason is required to reactivate a Retired unit."}), 400
+
     try:
         s = InventoryScan(
             code=code, imei=sanitize(d.get("imei")), mac_address=sanitize(d.get("mac_address")),
@@ -206,7 +246,7 @@ def scanned():
             person_name=cfg["user"], employee_id=cfg["empId"],
             email=cfg["email"], return_date=parse_dt(cfg["date"]),
             purchase_date=parse_dt(cfg["purchase"]), end_of_cycle=parse_dt(cfg["end"]),
-            notes=cfg["notes"], image_data=cfg["image_data"])
+            notes=cfg["notes"], image_data=cfg["image_data"], reason=reason)
         db.session.add(s); db.session.commit()
         return jsonify({"status": "success", "id": s.id})
     except Exception as e:
