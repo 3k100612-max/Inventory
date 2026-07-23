@@ -148,10 +148,10 @@
                     <tr id="row-{{ s.id }}">
                         <td class="small text-muted">{{ s.timestamp.strftime('%H:%M') }}</td>
                         <td>
-                            <div class="fw-bold">{{ s.code }}</div>
+                            <div class="fw-bold">{{ s.code }}{% if s.code in flagged_codes %} <span class="text-danger" title="Tagged for repair 3+ times">🚩</span>{% endif %}</div>
                             <div class="small text-muted">{{ s.device_type }}</div>
                         </td>
-                        <td><span class="badge rounded-pill bg-secondary status-badge">{{ s.status }}</span></td>
+                        <td><span class="badge rounded-pill {{ 'bg-danger' if s.code in flagged_codes else 'bg-secondary' }} status-badge">{{ s.status }}</span></td>
                         <td>{{ s.person_name }} ({{ s.department }})</td>
                         <td>
                             {% if user.is_admin %}
@@ -319,7 +319,7 @@
 
 
 <script>
-let scanner, activeFieldId = 'scan_serial', cfg = {}, promptModal, pendingIdentifiers = [];
+let scanner, activeFieldId = 'scan_serial', cfg = {}, promptModal, pendingIdentifiers = [], pendingReason = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     promptModal = new bootstrap.Modal(document.getElementById('promptModal'));
@@ -384,12 +384,28 @@ function onSerialScanned(text) {
     }).then(r => r.json()).then(res => {
         if (!res.ok || !res.accept) {
             alert(res.reason || res.error || "Rejected");
-            if (scanner) scanner.resume();     // Python rejected -> keep scanning
+            if (scanner) scanner.resume();
             return;
         }
+
+        if (res.confirmMessage && !confirm(res.confirmMessage)) {
+            if (scanner) scanner.resume();
+            return;
+        }
+
+        pendingReason = null;
+        if (res.requireReason) {
+            const r = prompt("Please enter a reason:");
+            if (!r || !r.trim()) {
+                alert("A reason is required. Scan cancelled.");
+                if (scanner) scanner.resume();
+                return;
+            }
+            pendingReason = r.trim();
+        }
+
         document.getElementById('scan_serial').value = res.code;
         document.getElementById('btn_manual_save').disabled = false;
-        // Python tells us which identifiers to still collect
         pendingIdentifiers = res.nextIdentifiers || [];
         promptModal.show();
     });
@@ -619,6 +635,7 @@ function saveData() {
         body: JSON.stringify(payload)
     })
     .then(r => r.json()).then(d => {
+        pendingReason = null;
         if (d.status === 'success') {
             document.getElementById('save_toast').style.display = 'block';
             setTimeout(() => { document.getElementById('save_toast').style.display = 'none'; }, 2000);
