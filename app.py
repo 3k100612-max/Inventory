@@ -22,11 +22,12 @@ login_manager.login_view = 'login'
 def add_csp(resp):
     resp.headers['Content-Security-Policy'] = (
         "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: "
-        "https://esm.sh https://cdn.jsdelivr.net; "
+        "https://esm.sh https://cdn.jsdelivr.net https://fastly.jsdelivr.net; "
         "worker-src 'self' blob:; "
-        "connect-src 'self' https://esm.sh https://cdn.jsdelivr.net;"
+        "connect-src 'self' https://esm.sh https://cdn.jsdelivr.net https://fastly.jsdelivr.net;"
     )
     return resp
+
 
 # ---------------- MODELS ----------------
 
