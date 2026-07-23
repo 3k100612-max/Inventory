@@ -347,12 +347,13 @@ def export_excel():
         buf,
         as_attachment=True,
         download_name=filename,
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-      except Exception as e:
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+         except Exception as e:
         import traceback
         traceback.print_exc()  # this will show in your Hostinger app logs
         return jsonify({"status": "error", "message": str(e)}), 500
+    )
+     
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8506)
