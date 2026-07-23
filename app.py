@@ -18,6 +18,17 @@ login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
 # ---------------- MODELS ----------------
+
+@app.after_request
+def add_csp(resp):
+    resp.headers['Content-Security-Policy'] = (
+        "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: "
+        "https://esm.sh https://cdn.jsdelivr.net; "
+        "worker-src 'self' blob:; "
+        "connect-src 'self' https://esm.sh https://cdn.jsdelivr.net;"
+    )
+    return resp
+
 class User(UserMixin, db.Model):
     __tablename__ = 'user'
     id = db.Column(db.Integer, primary_key=True)
