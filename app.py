@@ -342,7 +342,7 @@ def export_excel():
     wb.save(buf)
     buf.seek(0)
 
-   filename = f"inventory_export_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    filename = f"inventory_export_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
     return send_file(
         buf,
         as_attachment=True,
