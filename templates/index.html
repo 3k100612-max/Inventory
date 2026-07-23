@@ -280,6 +280,22 @@
         </div>
     </div>
 </div>
+<!-- CONFIRM MODAL (non-blocking replacement for confirm()/prompt()) -->
+<div class="modal fade" id="confirmModal" data-bs-backdrop="static" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header"><h5 class="modal-title" id="confirmModalTitle">Confirm</h5></div>
+            <div class="modal-body">
+                <p id="confirmModalMsg"></p>
+                <input type="text" id="confirmModalReasonInput" class="form-control mt-2" style="display:none;" placeholder="Enter reason...">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="confirmModalCancel">Cancel</button>
+                <button class="btn btn-primary" id="confirmModalOk">OK</button>
+            </div>
+        </div>
+    </div>
+</div>    
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
@@ -319,12 +335,47 @@
 
 
 <script>
-let scanner, activeFieldId = 'scan_serial', cfg = {}, promptModal, pendingIdentifiers = [], pendingReason = null;
+let scanner, activeFieldId = 'scan_serial', cfg = {}, promptModal, confirmModalInstance, pendingIdentifiers = [], pendingReason = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     promptModal = new bootstrap.Modal(document.getElementById('promptModal'));
+    confirmModalInstance = new bootstrap.Modal(document.getElementById('confirmModal'));
     toggleUI();
 });
+
+// Non-blocking replacement for confirm()/prompt(). Resolves to `false` (cancelled)
+// or `true`/the entered reason string (confirmed). Never freezes the camera loop.
+function showConfirm(message, { needsReason = false } = {}) {
+    return new Promise((resolve) => {
+        document.getElementById('confirmModalMsg').textContent = message;
+        const input = document.getElementById('confirmModalReasonInput');
+        input.style.display = needsReason ? 'block' : 'none';
+        input.classList.remove('is-invalid');
+        input.value = '';
+
+        const okBtn = document.getElementById('confirmModalOk');
+        const cancelBtn = document.getElementById('confirmModalCancel');
+
+        const cleanup = () => { okBtn.onclick = null; cancelBtn.onclick = null; };
+
+        okBtn.onclick = () => {
+            if (needsReason && !input.value.trim()) {
+                input.classList.add('is-invalid');
+                return;
+            }
+            cleanup();
+            confirmModalInstance.hide();
+            resolve(needsReason ? input.value.trim() : true);
+        };
+        cancelBtn.onclick = () => {
+            cleanup();
+            confirmModalInstance.hide();
+            resolve(false);
+        };
+
+        confirmModalInstance.show();
+    });
+}
 
 function toggleUI() {
     const status = document.querySelector('input[name="status"]:checked').value;
@@ -377,38 +428,38 @@ async function confirmSetup() {
 }
 
 // On every serial scan, ASK Python whether to accept it
-function onSerialScanned(text) {
-    fetch('/scan/check', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ code: text })
-    }).then(r => r.json()).then(res => {
+async function onSerialScanned(text) {
+    try {
+        const res = await fetch('/scan/check', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ code: text })
+        }).then(r => r.json());
+
         if (!res.ok || !res.accept) {
             alert(res.reason || res.error || "Rejected");
             if (scanner) scanner.resume();
             return;
         }
 
-        if (res.confirmMessage && !confirm(res.confirmMessage)) {
-            if (scanner) scanner.resume();
-            return;
-        }
-
         pendingReason = null;
-        if (res.requireReason) {
-            const r = prompt("Please enter a reason:");
-            if (!r || !r.trim()) {
-                alert("A reason is required. Scan cancelled.");
+        if (res.confirmMessage) {
+            const answer = await showConfirm(res.confirmMessage, { needsReason: res.requireReason });
+            if (!answer) {
                 if (scanner) scanner.resume();
                 return;
             }
-            pendingReason = r.trim();
+            if (res.requireReason) pendingReason = answer;
         }
 
         document.getElementById('scan_serial').value = res.code;
         document.getElementById('btn_manual_save').disabled = false;
         pendingIdentifiers = res.nextIdentifiers || [];
         promptModal.show();
-    });
+    } catch (err) {
+        console.error(err);
+        alert("Network error — please try again.");
+        if (scanner) scanner.resume();
+    }
 }
 
 
@@ -623,10 +674,11 @@ function setNextField(id) {
 function saveData() {
     promptModal.hide();
     const payload = {
-        ...cfg,                              // ✅ cfg holds user/empId/device/dept/status/scanMode
+        ...cfg,
         code: document.getElementById('scan_serial').value,
         imei: document.getElementById('scan_imei').value,
-        mac_address: document.getElementById('scan_mac').value
+        mac_address: document.getElementById('scan_mac').value,
+        reason: pendingReason          // NEW — was missing, so Retired→In Use reactivation always failed
     };
 
     fetch('/scanned', {
@@ -641,7 +693,6 @@ function saveData() {
             setTimeout(() => { document.getElementById('save_toast').style.display = 'none'; }, 2000);
 
             if (cfg.scanMode === 'Multiple') {
-                // Reset fields and resume
                 document.getElementById('scan_serial').value = '';
                 document.getElementById('scan_imei').value = '';
                 document.getElementById('scan_mac').value = '';
@@ -651,14 +702,21 @@ function saveData() {
                 document.getElementById('btn_manual_save').disabled = true;
                 if (scanner) scanner.resume();
 
-                // Update local table UI
                 const table = document.getElementById('history_body');
                 const newRow = `<tr><td class="small text-muted">Just Now</td><td><div class="fw-bold">${payload.code}</div><div class="small text-muted">${payload.device}</div></td><td><span class="badge rounded-pill bg-secondary status-badge">${payload.status}</span></td><td>${payload.user}</td><td>-</td></tr>`;
                 table.insertAdjacentHTML('afterbegin', newRow);
             } else {
                 location.reload();
             }
+        } else {
+            alert(d.message || "Save failed.");   // NEW — previously failed saves were silent
+            if (scanner) scanner.resume();
         }
+    })
+    .catch(err => {
+        pendingReason = null;
+        alert("Network error while saving.");
+        if (scanner) scanner.resume();
     });
 }
 
