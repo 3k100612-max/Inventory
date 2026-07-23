@@ -315,7 +315,7 @@
 </script>
 
 <script>
-let scanner, activeFieldId = 'scan_serial', session = {}, promptModal;
+let scanner, activeFieldId = 'scan_serial', cfg = {}, promptModal, pendingIdentifiers = [];
 
 document.addEventListener('DOMContentLoaded', () => {
     promptModal = new bootstrap.Modal(document.getElementById('promptModal'));
@@ -341,7 +341,7 @@ const toBase64 = f => new Promise((res) => {
     r.onload = () => res(r.result);
 });
 
-let scanner, activeFieldId = 'scan_serial', cfg = {}, promptModal, pendingIdentifiers = [];
+
 
 // SETUP: send raw form to Python, let it validate + return config
 async function confirmSetup() {
