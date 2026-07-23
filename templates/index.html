@@ -555,7 +555,7 @@ function setZoomLevel(value) {
     if (scanner) scanner.setZoom(value);
 }
 
-async function startScanner() {
+async function startScanner() {          // <-- 'async' MUST be here
     document.getElementById('start_section').style.display = 'none';
     document.getElementById('session_info').style.display = 'block';
     document.getElementById('scanner_section').style.display = 'block';
@@ -576,37 +576,22 @@ async function startScanner() {
         });
     }
 
-    // Start camera first so video shows even if the engine is slow
     try {
-        await scanner.start();
+        await scanner.start();            // await #1 — inside async, OK
     } catch (err) {
         console.error("Camera error", err);
         alert("Camera Error: " + err.message);
         return;
     }
 
-    // <-- PUT THE GUARD HERE (replaces the old crashing line 777)
-    if (window.zxingReady && window.zxingReady.catch) {
+    if (window.zxingReady && window.zxingReady.catch) {   // no await here — good
         window.zxingReady.catch(() => alert("Scanner engine failed to load."));
     }
-}
+}                                          // <-- function closes HERE
 
 
-    // Start the camera FIRST so the user sees video even if zxing is slow.
-    try {
-        await scanner.start();
-    } catch (err) {
-        console.error("Camera error", err);
-        alert("Camera Error: " + err.message);   // this will now actually fire
-        return;
-    }
 
-    // Decoder loop already skips frames until window.zxingReadBarcodes exists,
-    // so we don't need to block on it. But warn if it never loads:
-    if (window.zxingReady && window.zxingReady.catch) {
-    window.zxingReady.catch(() => alert("Scanner engine failed to load."));
-}
-}
+    
 
 
 function setNextField(id) {
