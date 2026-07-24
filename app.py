@@ -431,6 +431,7 @@ def export_excel():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 # ---------------- IMPORT TO EXCEL ----------------    
+# ---------------- IMPORT TO EXCEL ----------------
 @app.route('/import/excel', methods=['POST'])
 @login_required
 def import_excel():
@@ -463,64 +464,57 @@ def import_excel():
     # Skip Header
     for row_number, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
 
-    try:
-        timestamp = row[0]
-        serial = str(row[1]).strip() if row[1] else ""
+        try:
+            timestamp = row[0]
+            serial = str(row[1]).strip() if row[1] else ""
 
-        # SERIAL NUMBER IS REQUIRED
-        if serial == "":
-            skipped += 1
-            errors.append(f"Row {row_number}: Serial Number is empty.")
-            continue
+            # SERIAL NUMBER IS REQUIRED
+            if serial == "":
+                skipped += 1
+                errors.append(f"Row {row_number}: Serial Number is empty.")
+                continue
 
-        scan = InventoryScan(
-            code=serial,
-            device_type=row[2] or "Other",
-            imei=row[3],
-            mac_address=row[4],
-            department=row[5],
-            status=row[6] or "In Stock",
-            person_name=row[7],
-            employee_id=row[8],
-            email=row[9],
-            purchase_date=row[10],
-            return_date=row[11],
-            end_of_cycle=row[12],
-            reason=row[13],
-            notes=row[14],
-            timestamp=timestamp if isinstance(timestamp, datetime) else datetime.utcnow()
-        )
-
-        db.session.add(scan)
-        imported += 1
-
-    except Exception as e:
-        skipped += 1
-        errors.append(f"Row {row_number}: {str(e)}")
+            scan = InventoryScan(
+                code=serial,
+                device_type=row[2] or "Other",
+                imei=row[3],
+                mac_address=row[4],
+                department=row[5],
+                status=row[6] or "In Stock",
+                person_name=row[7],
+                employee_id=row[8],
+                email=row[9],
+                purchase_date=row[10],
+                return_date=row[11],
+                end_of_cycle=row[12],
+                reason=row[13],
+                notes=row[14],
+                timestamp=timestamp if isinstance(timestamp, datetime) else datetime.utcnow()
+            )
 
             db.session.add(scan)
-
             imported += 1
 
         except Exception as e:
-
             skipped += 1
             errors.append(f"Row {row_number}: {str(e)}")
 
-    db.session.commit()
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 
     os.remove(filepath)
 
     return jsonify({
-
         "status": "success",
-
         "imported": imported,
-
         "skipped": skipped,
-
         "errors": errors
-
     })
 
 if __name__ == '__main__':
