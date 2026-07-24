@@ -55,7 +55,8 @@ class User(UserMixin, db.Model):
 class InventoryScan(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(100), nullable=False)
-    imei = db.Column(db.String(100)); mac_address = db.Column(db.String(100))
+    imei = db.Column(db.String(100)); 
+    mac_address = db.Column(db.String(100))
     device_type = db.Column(db.String(100), nullable=False)
     department = db.Column(db.String(100))
     status = db.Column(db.String(50), nullable=False)
