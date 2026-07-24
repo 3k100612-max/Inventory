@@ -53,6 +53,7 @@ class InventoryScan(db.Model):
     device_type = db.Column(db.String(100), nullable=False)
     department = db.Column(db.String(100))
     status = db.Column(db.String(50), nullable=False)
+    is_flagged = db.Column(db.Boolean, default=False, nullable=False)
     person_name = db.Column(db.String(100)); employee_id = db.Column(db.String(50))
     email = db.Column(db.String(120))
     return_date = db.Column(db.Date); purchase_date = db.Column(db.Date); end_of_cycle = db.Column(db.Date)
@@ -96,6 +97,7 @@ def init_db():
             try:
                db.session.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE'))
                db.session.execute(text('ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS reason TEXT'))
+               db.session.execute(text('ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN DEFAULT FALSE'))
                db.session.commit()
             except Exception: db.session.rollback()
             if not User.query.filter_by(username='admin').first():
@@ -215,13 +217,19 @@ def scan_check():
             result["confirmMessage"] = f"Serial '{code}' is already In Use. Save this record again?"
 
         elif current == "Repair":
-            repair_count = InventoryScan.query.filter_by(code=code, status="Repair").count()
-            if repair_count >= 3:
-                result["flag"] = "red"
-                result["confirmMessage"] = (f"⚠️ Serial '{code}' has already been tagged for Repair "
-                                             f"{repair_count} times. Save anyway?")
+          repair_count = InventoryScan.query.filter_by(
+             code=code,
+             status="Repair"
+          ).count()
 
-        elif current == "Retired" and new_status == "In Use":
+          if repair_count >= 2:
+              result["flag"] = "red"
+              result["confirmMessage"] = (
+                  f"⚠️ Serial '{code}' will now be tagged as FLAGGED because "
+                  f"this is Repair #{repair_count + 1}. Save anyway?"
+              )
+
+         elif current == "Retired" and new_status == "In Use":
             result["requireReason"] = True
             result["confirmMessage"] = f"Serial '{code}' is Retired. Provide a reason to reactivate it to In Use."
 
@@ -234,30 +242,78 @@ def scanned():
     cfg = flask_session.get('scan_cfg')
     if not cfg:
         return jsonify({"status": "error", "message": "No active session."}), 400
+
     d = request.get_json() or {}
     code = sanitize(d.get('code'))
+
     if not code:
         return jsonify({"status": "error", "message": "Serial is required."}), 400
 
     reason = sanitize(d.get('reason'), 500)
-    last = InventoryScan.query.filter_by(code=code).order_by(InventoryScan.timestamp.desc()).first()
+
+    last = InventoryScan.query.filter_by(code=code).order_by(
+        InventoryScan.timestamp.desc()
+    ).first()
 
     if last and last.status == "Retired" and cfg["status"] == "In Use" and not reason:
-        return jsonify({"status": "error", "message": "A reason is required to reactivate a Retired unit."}), 400
+        return jsonify({
+            "status": "error",
+            "message": "A reason is required to reactivate a Retired unit."
+        }), 400
+
+    # -------------------------------
+    # Automatically determine if this
+    # serial should be flagged
+    # -------------------------------
+    is_flagged = False
+
+    if cfg["status"] == "Repair":
+        repair_count = InventoryScan.query.filter_by(
+            code=code,
+            status="Repair"
+        ).count()
+
+        # This save becomes the 3rd repair
+        if repair_count + 1 >= 3:
+            is_flagged = True
 
     try:
         s = InventoryScan(
-            code=code, imei=sanitize(d.get("imei")), mac_address=sanitize(d.get("mac_address")),
-            device_type=cfg["device"], department=cfg["dept"], status=cfg["status"],
-            person_name=cfg["user"], employee_id=cfg["empId"],
-            email=cfg["email"], return_date=parse_dt(cfg["date"]),
-            purchase_date=parse_dt(cfg["purchase"]), end_of_cycle=parse_dt(cfg["end"]),
-            notes=cfg["notes"], image_data=cfg["image_data"], reason=reason)
-        db.session.add(s); db.session.commit()
-        return jsonify({"status": "success", "id": s.id})
+            code=code,
+            imei=sanitize(d.get("imei")),
+            mac_address=sanitize(d.get("mac_address")),
+            device_type=cfg["device"],
+            department=cfg["dept"],
+            status=cfg["status"],
+            person_name=cfg["user"],
+            employee_id=cfg["empId"],
+            email=cfg["email"],
+            return_date=parse_dt(cfg["date"]),
+            purchase_date=parse_dt(cfg["purchase"]),
+            end_of_cycle=parse_dt(cfg["end"]),
+            notes=cfg["notes"],
+            image_data=cfg["image_data"],
+            reason=reason,
+
+            # NEW
+            is_flagged=is_flagged
+        )
+
+        db.session.add(s)
+        db.session.commit()
+
+        return jsonify({
+            "status": "success",
+            "id": s.id,
+            "is_flagged": is_flagged
+        })
+
     except Exception as e:
         db.session.rollback()
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 
 # ---------------- ADMIN (unchanged) ----------------
 @app.route('/admin/users', methods=['GET', 'POST'])
