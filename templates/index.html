@@ -328,7 +328,18 @@
     ];
     window.zxingReadBarcodes = readBarcodes;
     window.zxingReady = Promise.resolve();
-    document.getElementById('scan_engine_status').textContent = 'Scanner engine ready';
+
+window.zxingReady
+.then(()=>{
+    document.getElementById("scan_engine_status").textContent =
+    "Scanner engine ready";
+})
+.catch(e=>{
+    console.error(e);
+
+    document.getElementById("scan_engine_status").textContent =
+    "Scanner failed to load";
+});    
 </script>
 
 
@@ -401,31 +412,58 @@ const toBase64 = f => new Promise((res) => {
 
 // SETUP: send raw form to Python, let it validate + return config
 async function confirmSetup() {
-    const body = {
-        user: document.getElementById('m_user').value,
-        empId: document.getElementById('m_emp_id').value,
-        device: document.getElementById('m_device').value,
-        otherDevice: document.getElementById('m_other_device').value,
-        dept: document.getElementById('m_dept').value,
-        otherDept: document.getElementById('m_other_dept').value,
-        scanMode: document.querySelector('input[name="scan_mode"]:checked').value,
-        status: document.querySelector('input[name="status"]:checked').value,
-        email: document.getElementById('m_email').value,
-        date: document.getElementById('m_date').value,
-        notes: document.getElementById('m_notes').value,
-        purchase: document.getElementById('m_purchase').value,
-        end: document.getElementById('m_end').value,
-        image_data: await toBase64(document.getElementById('m_image').files[0])
-    };
-    const res = await fetch('/session/start', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(body)
-    }).then(r => r.json());
+    try {
+        const body = {
+            user: document.getElementById('m_user').value,
+            empId: document.getElementById('m_emp_id').value,
+            device: document.getElementById('m_device').value,
+            otherDevice: document.getElementById('m_other_device').value,
+            dept: document.getElementById('m_dept').value,
+            otherDept: document.getElementById('m_other_dept').value,
+            scanMode: document.querySelector('input[name="scan_mode"]:checked').value,
+            status: document.querySelector('input[name="status"]:checked').value,
+            email: document.getElementById('m_email').value,
+            date: document.getElementById('m_date').value,
+            notes: document.getElementById('m_notes').value,
+            purchase: document.getElementById('m_purchase').value,
+            end: document.getElementById('m_end').value,
+            image_data: await toBase64(document.getElementById('m_image').files[0])
+        };
 
-    if (!res.ok) return alert(res.error);   // Python decided it's invalid
-    cfg = res.config;                         // Python is the source of truth
-    bootstrap.Modal.getInstance(document.getElementById('setupModal')).hide();
-    startScanner();
+        const response = await fetch('/session/start', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+            const txt = await response.text();
+            console.error(txt);
+            alert("Server Error:\n\n" + txt);
+            return;
+        }
+
+        const res = await response.json();
+
+        if (!res.ok) {
+            alert(res.error);
+            return;
+        }
+
+        cfg = res.config;
+
+        bootstrap.Modal.getInstance(
+            document.getElementById('setupModal')
+        ).hide();
+
+        await startScanner();
+
+    } catch (err) {
+        console.error(err);
+        alert(err);
+    }
 }
 
 // On every serial scan, ASK Python whether to accept it
@@ -647,12 +685,20 @@ async function startScanner() {          // <-- 'async' MUST be here
     }
 
     try {
-        await scanner.start();            // await #1 — inside async, OK
-    } catch (err) {
-        console.error("Camera error", err);
-        alert("Camera Error: " + err.message);
-        return;
+
+    await scanner.start();
+
+    document.getElementById("scan_engine_status").textContent =
+    "Camera Ready";
+
     }
+catch(err){
+
+    console.error(err);
+
+    alert(err.message);
+
+}
 
     if (window.zxingReady && window.zxingReady.catch) {   // no await here — good
         window.zxingReady.catch(() => alert("Scanner engine failed to load."));
