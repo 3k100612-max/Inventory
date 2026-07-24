@@ -10,6 +10,8 @@ from io import BytesIO
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from functools import wraps
+from openpyxl import load_workbook
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'change-this-in-hostinger-settings')
@@ -17,6 +19,10 @@ DB_USER = os.environ.get('DB_USER'); DB_PASS = os.environ.get('DB_PASS')
 DB_HOST = os.environ.get('DB_HOST'); DB_NAME = os.environ.get('DB_NAME')
 app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024 * 1024
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
@@ -424,7 +430,116 @@ def export_excel():
         download_name=filename,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-     
+# ---------------- IMPORT TO EXCEL ----------------    
+@app.route('/import/excel', methods=['POST'])
+@login_required
+def import_excel():
+
+    if 'file' not in request.files:
+        return jsonify({
+            "status": "error",
+            "message": "No file selected."
+        }), 400
+
+    file = request.files['file']
+
+    if file.filename == '':
+        return jsonify({
+            "status": "error",
+            "message": "Empty filename."
+        }), 400
+
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+
+    wb = load_workbook(filepath)
+    ws = wb.active
+
+    imported = 0
+    skipped = 0
+    errors = []
+
+    # Skip Header
+    for row_number, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+
+        try:
+
+            timestamp = row[0]
+            serial = str(row[1]).strip() if row[1] else ""
+
+            # SERIAL NUMBER IS REQUIRED
+            if serial == "":
+                skipped += 1
+                errors.append(f"Row {row_number}: Serial Number is empty.")
+                continue
+
+            # Prevent duplicate serial
+            duplicate = InventoryScan.query.filter_by(code=serial).first()
+
+            if duplicate:
+                skipped += 1
+                errors.append(f"Row {row_number}: Serial {serial} already exists.")
+                continue
+
+            scan = InventoryScan(
+
+                code=serial,
+
+                device_type=row[2] or "Other",
+
+                imei=row[3],
+
+                mac_address=row[4],
+
+                department=row[5],
+
+                status=row[6] or "In Stock",
+
+                person_name=row[7],
+
+                employee_id=row[8],
+
+                email=row[9],
+
+                purchase_date=row[10],
+
+                return_date=row[11],
+
+                end_of_cycle=row[12],
+
+                reason=row[13],
+
+                notes=row[14],
+
+                timestamp=timestamp if isinstance(timestamp, datetime) else datetime.utcnow()
+
+            )
+
+            db.session.add(scan)
+
+            imported += 1
+
+        except Exception as e:
+
+            skipped += 1
+            errors.append(f"Row {row_number}: {str(e)}")
+
+    db.session.commit()
+
+    os.remove(filepath)
+
+    return jsonify({
+
+        "status": "success",
+
+        "imported": imported,
+
+        "skipped": skipped,
+
+        "errors": errors
+
+    })
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8506)
