@@ -217,12 +217,12 @@ def scan_check():
             result["confirmMessage"] = f"Serial '{code}' is already In Use. Save this record again?"
 
         elif current == "Repair":
-          repair_count = InventoryScan.query.filter_by(
+           repair_count = InventoryScan.query.filter_by(
              code=code,
              status="Repair"
-          ).count()
+           ).count()
 
-          if repair_count >= 2:
+           if repair_count >= 2:
               result["flag"] = "red"
               result["confirmMessage"] = (
                   f"⚠️ Serial '{code}' will now be tagged as FLAGGED because "
