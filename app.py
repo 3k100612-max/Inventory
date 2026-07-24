@@ -102,7 +102,7 @@ def init_db():
             except Exception: db.session.rollback()
             if not User.query.filter_by(username='admin').first():
                 db.session.add(User(username='admin', password=generate_password_hash('P12345'),
-                                     is_admin=True, is_superadmin=True))
+                                     is_admin=True))
                 db.session.commit()
         except Exception as e:
             print(f"DB Init Error: {e}", file=sys.stderr)
@@ -188,15 +188,20 @@ def scan_check():
     cfg = flask_session.get('scan_cfg')
     if not cfg:
         return jsonify({"ok": False, "error": "No active session. Start a session first."}), 400
+
     code = sanitize((request.get_json() or {}).get('code'))
     if not code:
         return jsonify({"ok": False, "accept": False, "reason": "Empty code"}), 200
 
     new_status = cfg.get("status")
-    last = InventoryScan.query.filter_by(code=code).order_by(InventoryScan.timestamp.desc()).first()
+    last = InventoryScan.query.filter_by(code=code).order_by(
+        InventoryScan.timestamp.desc()
+    ).first()
 
     result = {
-        "ok": True, "accept": True, "code": code,
+        "ok": True,
+        "accept": True,
+        "code": code,
         "nextIdentifiers": cfg.get("identifiers", []),
         "confirmMessage": None,
         "requireReason": False,
@@ -207,31 +212,39 @@ def scan_check():
         current = last.status
 
         if current == "In Stock":
-            result["confirmMessage"] = f"Serial '{code}' was already scanned (In Stock). Save this record again?"
+            result["confirmMessage"] = (
+                f"Serial '{code}' was already scanned (In Stock). Save this record again?"
+            )
 
         elif current == "Loaned" and new_status == "In Use":
-            result["confirmMessage"] = (f"Serial '{code}' is currently Loaned and has not been returned. "
-                                         f"It will be updated to In Use. Continue?")
+            result["confirmMessage"] = (
+                f"Serial '{code}' is currently Loaned and has not been returned. "
+                f"It will be updated to In Use. Continue?"
+            )
 
         elif current == "In Use" and new_status == "In Use":
-            result["confirmMessage"] = f"Serial '{code}' is already In Use. Save this record again?"
+            result["confirmMessage"] = (
+                f"Serial '{code}' is already In Use. Save this record again?"
+            )
 
         elif current == "Repair":
-           repair_count = InventoryScan.query.filter_by(
-             code=code,
-             status="Repair"
-           ).count()
+            repair_count = InventoryScan.query.filter_by(
+                code=code,
+                status="Repair"
+            ).count()
 
-           if repair_count >= 2:
-              result["flag"] = "red"
-              result["confirmMessage"] = (
-                  f"⚠️ Serial '{code}' will now be tagged as FLAGGED because "
-                  f"this is Repair #{repair_count + 1}. Save anyway?"
-              )
+            if repair_count >= 2:
+                result["flag"] = "red"
+                result["confirmMessage"] = (
+                    f"⚠️ Serial '{code}' will now be tagged as FLAGGED because "
+                    f"this is Repair #{repair_count + 1}. Save anyway?"
+                )
 
-         elif current == "Retired" and new_status == "In Use":
+        elif current == "Retired" and new_status == "In Use":
             result["requireReason"] = True
-            result["confirmMessage"] = f"Serial '{code}' is Retired. Provide a reason to reactivate it to In Use."
+            result["confirmMessage"] = (
+                f"Serial '{code}' is Retired. Provide a reason to reactivate it to In Use."
+            )
 
     return jsonify(result)
 
