@@ -118,7 +118,7 @@ def init_db():
                db.session.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE'))
                db.session.execute(text('ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS reason TEXT'))
                db.session.execute(text('ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN DEFAULT FALSE'))
-               db.session.execute(text('ALTER TABLE inventory_scan ''ADD COLUMN IF NOT EXISTS substatus VARCHAR(50)'))
+               db.session.execute(text('ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS substatus VARCHAR(50)'))
                db.session.commit()
             except Exception: db.session.rollback()
             if not User.query.filter_by(username='admin').first():
