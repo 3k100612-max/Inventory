@@ -88,7 +88,13 @@ def load_user(uid): return User.query.get(int(uid))
 DEVICE_TYPES = ["Laptop", "Mobile", "Monitor", "Printer", "Other"]
 DEPARTMENTS  = ["IT", "FINANCE", "PROCUREMENT", "Other"]
 STATUSES     = ["In Stock", "Loaned", "In Use", "Repair", "Retired"]
-SUBSTATUS_RULES = {"In Stock": [ "New", "Active"],"Retired": ["Lost","End of Life"]}
+SUBSTATUS_RULES = {
+    "In Stock": ["New", "Active"],
+    "Loaned": ["Service Unit"],
+    "Repair": ["Ongoing"],
+    "Retired": ["Lost", "End of Life"]
+}
+
 
 # Which extra fields each status needs. Client just renders what Python says.
 STATUS_FIELD_RULES = {
@@ -201,20 +207,34 @@ def session_start():
 
     # Validate substatus based on the selected main status
     substatus = sanitize(d.get('substatus'))
+    # Determine and validate substatus based on the selected status
     valid_substatuses = SUBSTATUS_RULES.get(status, [])
 
-    if valid_substatuses:
-        if substatus not in valid_substatuses:
-            return jsonify({
-                "ok": False,
-                "error": (
-                    f"Substatus is required for {status}. "
-                    f"Choose one of: {', '.join(valid_substatuses)}."
-                )
-            }), 400
+    if status == "Loaned":
+    # Loaned always gets this substatus automatically
+        substatus = "Service Unit"
+
+    elif status == "Repair":
+    # Repair always gets this substatus automatically
+        substatus = "Ongoing"
+
+    elif valid_substatuses:
+    # In Stock and Retired require the user to select a substatus
+        substatus = sanitize(d.get('substatus'))
+
+    if substatus not in valid_substatuses:
+        return jsonify({
+            "ok": False,
+            "error": (
+                f"Substatus is required for {status}. "
+                f"Choose one of: {', '.join(valid_substatuses)}."
+            )
+        }), 400
+
     else:
-        # Other statuses do not use a substatus
+    # In Use does not use a substatus
         substatus = None
+
 
     base = device if device in DEVICE_IDENTIFIER_RULES else 'Other'
 
