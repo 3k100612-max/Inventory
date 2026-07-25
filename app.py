@@ -429,7 +429,94 @@ def scanned():
             "status": "error",
             "message": str(e)
         }), 500
+        
+# ---------------- EDIT: fetch single record ----------------
+@app.route('/scan/<int:scan_id>', methods=['GET'])
+@login_required
+def get_scan(scan_id):
+    s = InventoryScan.query.get(scan_id)
+    if not s:
+        return jsonify({"status": "error", "message": "Not found"}), 404
 
+    return jsonify({
+        "status": "success",
+        "scan": {
+            "id": s.id,
+            "code": s.code,
+            "imei": s.imei,
+            "mac_address": s.mac_address,
+            "device_type": s.device_type,
+            "department": s.department,
+            "status": s.status,
+            "substatus": s.substatus,
+            "person_name": s.person_name,
+            "employee_id": s.employee_id,
+            "email": s.email,
+            "purchase_date": s.purchase_date.strftime('%Y-%m-%d') if s.purchase_date else "",
+            "return_date": s.return_date.strftime('%Y-%m-%d') if s.return_date else "",
+            "end_of_cycle": s.end_of_cycle.strftime('%Y-%m-%d') if s.end_of_cycle else "",
+            "reason": s.reason,
+            "notes": s.notes
+        }
+    })
+
+
+# ---------------- EDIT: update single record ----------------
+@app.route('/scan/<int:scan_id>/edit', methods=['POST'])
+@login_required
+def edit_scan(scan_id):
+    if not current_user.is_admin:
+        return jsonify({"status": "error", "message": "Admin only"}), 403
+
+    s = InventoryScan.query.get(scan_id)
+    if not s:
+        return jsonify({"status": "error", "message": "Not found"}), 404
+
+    d = request.get_json() or {}
+
+    status_value = sanitize(d.get('status'))
+    if status_value not in STATUSES:
+        return jsonify({"status": "error", "message": "Invalid status."}), 400
+
+    valid_substatuses = SUBSTATUS_RULES.get(status_value, [])
+    substatus_value = sanitize(d.get('substatus'))
+
+    if status_value == "Loaned":
+        substatus_value = "Service Unit"
+    elif status_value == "Repair":
+        substatus_value = "Ongoing"
+    elif valid_substatuses:
+        if substatus_value not in valid_substatuses:
+            return jsonify({
+                "status": "error",
+                "message": f"Substatus must be one of: {', '.join(valid_substatuses)}."
+            }), 400
+    else:
+        substatus_value = None
+
+    try:
+        s.code = sanitize(d.get('code')) or s.code
+        s.imei = sanitize(d.get('imei'))
+        s.mac_address = sanitize(d.get('mac_address'))
+        s.device_type = sanitize(d.get('device_type')) or s.device_type
+        s.department = sanitize(d.get('department'))
+        s.status = status_value
+        s.substatus = substatus_value
+        s.person_name = sanitize(d.get('person_name'))
+        s.employee_id = sanitize(d.get('employee_id'))
+        s.email = sanitize(d.get('email'), 120)
+        s.purchase_date = parse_dt(d.get('purchase_date'))
+        s.return_date = parse_dt(d.get('return_date'))
+        s.end_of_cycle = parse_dt(d.get('end_of_cycle'))
+        s.reason = sanitize(d.get('reason'), 500)
+        s.notes = sanitize(d.get('notes'), 1000)
+
+        db.session.commit()
+        return jsonify({"status": "success", "id": s.id})
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # ---------------- ADMIN ----------------
 @app.route('/admin/users', methods=['GET', 'POST'])
