@@ -167,23 +167,72 @@
         <div class="table-responsive">
             <table class="table table-hover align-middle">
                 <thead class="table-light">
-                    <tr><th>Time</th><th>Item Info</th><th>Status</th><th>Employee</th><th>Action</th></tr>
+                    <tr>
+                        <th>Time</th>
+                        <th>Item Info</th>
+                        <th>Status</th>
+                        <th>Substatus</th>
+                        <th>Employee</th>
+                        <th>Action</th>
+                    </tr>
                 </thead>
                 <tbody id="history_body">
                     {% for s in scans %}
                     <tr id="row-{{ s.id }}">
-                        <td class="small text-muted">{{ s.timestamp.strftime('%H:%M') }}</td>
-                        <td>
-                            <div class="fw-bold">{{ s.code }}{% if s.code in flagged_codes %} <span class="text-danger" title="Tagged for repair 3+ times">🚩</span>{% endif %}</div>
-                            <div class="small text-muted">{{ s.device_type }}</div>
+                        <td class="small text-muted">
+                            {{ s.timestamp.strftime('%H:%M') }}
                         </td>
-                        <td><span class="badge rounded-pill {{ 'bg-danger' if s.code in flagged_codes else 'bg-secondary' }} status-badge">{{ s.status }}</span></td>
-                        <td>{{ s.person_name }} ({{ s.department }})</td>
+                    
+                        <td>
+                            <div class="fw-bold">
+                                {{ s.code }}
+                    
+                                {% if s.code in flagged_codes %}
+                                    <span
+                                        class="text-danger"
+                                        title="Tagged for repair 3+ times">
+                                        🚩
+                                    </span>
+                                {% endif %}
+                            </div>
+                    
+                            <div class="small text-muted">
+                                {{ s.device_type }}
+                            </div>
+                        </td>
+                    
+                        <td>
+                            <span class="badge rounded-pill
+                                {{ 'bg-danger' if s.code in flagged_codes
+                                   else 'bg-secondary' }}
+                                status-badge">
+                                {{ s.status }}
+                            </span>
+                        </td>
+                    
+                        <td>
+                            {% if s.substatus %}
+                                <span class="badge bg-light text-dark border">
+                                    {{ s.substatus }}
+                                </span>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                    
+                        <td>
+                            {{ s.person_name }} ({{ s.department }})
+                        </td>
+                    
                         <td>
                             {% if user.is_admin %}
-                            <button class="btn btn-sm text-danger" onclick="deleteSingle({{ s.id }})">🗑️</button>
+                                <button
+                                    class="btn btn-sm text-danger"
+                                    onclick="deleteSingle({{ s.id }})">
+                                    🗑️
+                                </button>
                             {% else %}
-                            <span class="text-muted small">-</span>
+                                <span class="text-muted small">-</span>
                             {% endif %}
                         </td>
                     </tr>
@@ -265,6 +314,21 @@
                         <label class="btn btn-outline-secondary" for="st4">Repair</label>
                         <input type="radio" class="btn-check" name="status" id="st5" value="Retired" onchange="toggleUI()">
                         <label class="btn btn-outline-secondary" for="st5">Retired</label>
+                    </div>
+                </div>
+
+                <!-- Substatus -->
+                <div class="mb-4" id="substatus_group" style="display:none;">
+                    <label class="form-label fw-bold mandatory-label">
+                        Substatus
+                    </label>
+                
+                    <select id="m_substatus" class="form-select">
+                        <option value="">Select substatus</option>
+                    </select>
+                
+                    <div class="form-text">
+                        Select the condition of this asset.
                     </div>
                 </div>
 
@@ -475,16 +539,64 @@ function showConfirm(message, { needsReason = false } = {}) {
 }
 
 function toggleUI() {
-    const status = document.querySelector('input[name="status"]:checked').value;
+    const status = document.querySelector(
+        'input[name="status"]:checked'
+    ).value;
+
     const device = document.getElementById('m_device').value;
     const dept = document.getElementById('m_dept').value;
 
-    document.getElementById('m_other_device').style.display = (device === 'Other') ? 'block' : 'none';
-    document.getElementById('m_other_dept').style.display = (dept === 'Other') ? 'block' : 'none';
+    document.getElementById('m_other_device').style.display =
+        device === 'Other' ? 'block' : 'none';
 
-    document.getElementById('group_loan').style.display = (status === 'Loaned') ? 'flex' : 'none';
-    document.getElementById('group_stock').style.display = (status === 'In Stock') ? 'flex' : 'none';
+    document.getElementById('m_other_dept').style.display =
+        dept === 'Other' ? 'block' : 'none';
+
+    document.getElementById('group_loan').style.display =
+        status === 'Loaned' ? 'flex' : 'none';
+
+    document.getElementById('group_stock').style.display =
+        status === 'In Stock' ? 'flex' : 'none';
+
+    updateSubstatusOptions(status);
 }
+
+function updateSubstatusOptions(status) {
+    const group = document.getElementById('substatus_group');
+    const select = document.getElementById('m_substatus');
+
+    const substatusOptions = {
+        "In Stock": ["New", "Active"],
+        "Retired": ["Lost", "End of Life"]
+    };
+
+    const options = substatusOptions[status] || [];
+
+    select.innerHTML =
+        '<option value="">Select substatus</option>';
+
+    if (options.length === 0) {
+        group.style.display = 'none';
+        select.required = false;
+        select.value = '';
+        return;
+    }
+
+    group.style.display = 'block';
+    select.required = true;
+
+    options.forEach(function(substatus) {
+        const option = document.createElement('option');
+
+        option.value = substatus;
+        option.textContent = substatus;
+
+        select.appendChild(option);
+    });
+}
+
+
+
 
 const toBase64 = f => new Promise((res) => {
     if (!f) return res(null);
@@ -492,6 +604,26 @@ const toBase64 = f => new Promise((res) => {
     r.readAsDataURL(f);
     r.onload = () => res(r.result);
 });
+
+async function confirmSetup() {
+    const selectedStatus = document.querySelector(
+        'input[name="status"]:checked'
+    ).value;
+
+    const selectedSubstatus = document.getElementById(
+        'm_substatus'
+    ).value;
+
+    if (
+        ['In Stock', 'Retired'].includes(selectedStatus) &&
+        !selectedSubstatus
+    ) {
+        alert('Please select a substatus.');
+        return;
+    }
+
+    try {
+        // Existing code continues here
 
 
 
@@ -505,14 +637,23 @@ async function confirmSetup() {
             otherDevice: document.getElementById('m_other_device').value,
             dept: document.getElementById('m_dept').value,
             otherDept: document.getElementById('m_other_dept').value,
-            scanMode: document.querySelector('input[name="scan_mode"]:checked').value,
-            status: document.querySelector('input[name="status"]:checked').value,
+            scanMode: document.querySelector(
+                'input[name="scan_mode"]:checked'
+            ).value,
+            status: document.querySelector(
+                'input[name="status"]:checked'
+            ).value,
+        
+            substatus: document.getElementById('m_substatus').value,
+        
             email: document.getElementById('m_email').value,
             date: document.getElementById('m_date').value,
             notes: document.getElementById('m_notes').value,
             purchase: document.getElementById('m_purchase').value,
             end: document.getElementById('m_end').value,
-            image_data: await toBase64(document.getElementById('m_image').files[0])
+            image_data: await toBase64(
+                document.getElementById('m_image').files[0]
+            )
         };
 
         const response = await fetch('/session/start', {
@@ -835,7 +976,43 @@ function saveData() {
                 if (scanner) scanner.resume();
 
                 const table = document.getElementById('history_body');
-                const newRow = `<tr><td class="small text-muted">Just Now</td><td><div class="fw-bold">${payload.code}</div><div class="small text-muted">${payload.device}</div></td><td><span class="badge rounded-pill bg-secondary status-badge">${payload.status}</span></td><td>${payload.user}</td><td>-</td></tr>`;
+                const newRow = `
+                                <tr>
+                                    <td class="small text-muted">Just Now</td>
+                                
+                                    <td>
+                                        <div class="fw-bold">
+                                            ${payload.code}
+                                        </div>
+                                        <div class="small text-muted">
+                                            ${payload.device}
+                                        </div>
+                                    </td>
+                                
+                                    <td>
+                                        <span class="badge rounded-pill bg-secondary status-badge">
+                                            ${payload.status}
+                                        </span>
+                                    </td>
+                                
+                                    <td>
+                                        ${
+                                            payload.substatus
+                                            ? `<span class="badge bg-light text-dark border">
+                                                   ${payload.substatus}
+                                               </span>`
+                                            : '<span class="text-muted">-</span>'
+                                        }
+                                    </td>
+                                
+                                    <td>
+                                        ${payload.user}
+                                    </td>
+                                
+                                    <td>-</td>
+                                </tr>
+                                `;
+
                 table.insertAdjacentHTML('afterbegin', newRow);
             } else {
                 location.reload();
