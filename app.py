@@ -171,51 +171,86 @@ def index():
 @login_required
 def session_start():
     d = request.get_json() or {}
-    user = sanitize(d.get('user')); emp = sanitize(d.get('empId'))
+
+    user = sanitize(d.get('user'))
+    emp = sanitize(d.get('empId'))
+
     if not user or not emp:
-        return jsonify({"ok": False, "error": "Employee Name and ID are mandatory."}), 400
+        return jsonify({
+            "ok": False,
+            "error": "Employee Name and ID are mandatory."
+        }), 400
 
     device = sanitize(d.get('device'))
-    if device == 'Other': device = sanitize(d.get('otherDevice')) or 'Other'
+
+    if device == 'Other':
+        device = sanitize(d.get('otherDevice')) or 'Other'
+
     dept = sanitize(d.get('dept'))
-    if dept == 'Other': dept = sanitize(d.get('otherDept')) or 'Other'
+
+    if dept == 'Other':
+        dept = sanitize(d.get('otherDept')) or 'Other'
 
     status = sanitize(d.get('status'))
-    if status not in STATUSES:
-        return jsonify({"ok": False, "error": "Invalid status."}), 400
-    
-    substatus = sanitize(d.get('substatus'))
 
+    if status not in STATUSES:
+        return jsonify({
+            "ok": False,
+            "error": "Invalid status."
+        }), 400
+
+    # Validate substatus based on the selected main status
+    substatus = sanitize(d.get('substatus'))
     valid_substatuses = SUBSTATUS_RULES.get(status, [])
 
-    if valid_substatuses and substatus not in valid_substatuses:
-       return jsonify({
-        "ok": False,
-        "error": f"Substatus is required for {status}. "
-                  f"Choose one of: {', '.join(valid_substatuses)}."
-       }), 400
-
-    if not valid_substatuses:
-       substatus = None
-
+    if valid_substatuses:
+        if substatus not in valid_substatuses:
+            return jsonify({
+                "ok": False,
+                "error": (
+                    f"Substatus is required for {status}. "
+                    f"Choose one of: {', '.join(valid_substatuses)}."
+                )
+            }), 400
+    else:
+        # Other statuses do not use a substatus
+        substatus = None
 
     base = device if device in DEVICE_IDENTIFIER_RULES else 'Other'
 
-    # Store the authoritative session server-side.
+    # Store the authoritative session configuration server-side
     flask_session['scan_cfg'] = {
-        "user": user, "empId": emp, "device": device, "dept": dept, "status": status,"substatus": substatus,
+        "user": user,
+        "empId": emp,
+        "device": device,
+        "dept": dept,
+        "status": status,
+        "substatus": substatus,
         "scanMode": sanitize(d.get('scanMode')) or "Single",
-        "email": sanitize(d.get('email'), 120), "date": sanitize(d.get('date')),
-        "purchase": sanitize(d.get('purchase')), "end": sanitize(d.get('end')),
-        "notes": sanitize(d.get('notes'), 1000), "image_data": d.get('image_data'),
-        "identifiers": DEVICE_IDENTIFIER_RULES.get(base, []),
+        "email": sanitize(d.get('email'), 120),
+        "date": sanitize(d.get('date')),
+        "purchase": sanitize(d.get('purchase')),
+        "end": sanitize(d.get('end')),
+        "notes": sanitize(d.get('notes'), 1000),
+        "image_data": d.get('image_data'),
+        "identifiers": DEVICE_IDENTIFIER_RULES.get(base, [])
     }
-    return jsonify({"ok": True, "config": {
-        "user": user, "empId": emp, "device": device, "dept": dept,
-        "status": status,"substatus": substatus, "scanMode": flask_session['scan_cfg']['scanMode'],
-        "requiredFields": STATUS_FIELD_RULES.get(status, []),
-        "identifiers": flask_session['scan_cfg']['identifiers'],
-    }})
+
+    return jsonify({
+        "ok": True,
+        "config": {
+            "user": user,
+            "empId": emp,
+            "device": device,
+            "dept": dept,
+            "status": status,
+            "substatus": substatus,
+            "scanMode": flask_session['scan_cfg']['scanMode'],
+            "requiredFields": STATUS_FIELD_RULES.get(status, []),
+            "identifiers": flask_session['scan_cfg']['identifiers']
+        }
+    })
+
 
 # ---------------- SCAN CHECK: Python decides accept/reject/next ----------------
 @app.route('/scan/check', methods=['POST'])
@@ -402,21 +437,43 @@ def delete_scans():
 @app.route('/export/excel')
 @login_required
 def export_excel():
-    scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).all()
+    scans = InventoryScan.query.order_by(
+        InventoryScan.timestamp.desc()
+    ).all()
 
     wb = Workbook()
     ws = wb.active
     ws.title = "Inventory"
 
     headers = [
-        "Timestamp", "Serial/Code", "Device Type", "IMEI", "MAC Address",
-        "Department", "Status", "Employee Name", "Employee ID", "Email",
-        "Purchase Date", "Return Date", "End of Cycle", "Reason", "Notes"
+        "Timestamp",
+        "Serial/Code",
+        "Device Type",
+        "IMEI",
+        "MAC Address",
+        "Department",
+        "Status",
+        "Substatus",
+        "Employee Name",
+        "Employee ID",
+        "Email",
+        "Purchase Date",
+        "Return Date",
+        "End of Cycle",
+        "Reason",
+        "Notes"
     ]
+
     ws.append(headers)
 
-    header_fill = PatternFill(start_color="0D6EFD", end_color="0D6EFD", fill_type="solid")
+    header_fill = PatternFill(
+        start_color="0D6EFD",
+        end_color="0D6EFD",
+        fill_type="solid"
+    )
+
     header_font = Font(color="FFFFFF", bold=True)
+
     for col_num, _ in enumerate(headers, start=1):
         cell = ws.cell(row=1, column=col_num)
         cell.fill = header_fill
@@ -425,28 +482,45 @@ def export_excel():
 
     for s in scans:
         ws.append([
-            s.timestamp.strftime('%Y-%m-%d %H:%M:%S') if s.timestamp else "",
+            s.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+            if s.timestamp else "",
+
             s.code,
             s.device_type,
             s.imei or "",
             s.mac_address or "",
             s.department or "",
             s.status,
+            s.substatus or "",
             s.person_name or "",
             s.employee_id or "",
             s.email or "",
-            s.purchase_date.strftime('%Y-%m-%d') if s.purchase_date else "",
-            s.return_date.strftime('%Y-%m-%d') if s.return_date else "",
-            s.end_of_cycle.strftime('%Y-%m-%d') if s.end_of_cycle else "",
+
+            s.purchase_date.strftime('%Y-%m-%d')
+            if s.purchase_date else "",
+
+            s.return_date.strftime('%Y-%m-%d')
+            if s.return_date else "",
+
+            s.end_of_cycle.strftime('%Y-%m-%d')
+            if s.end_of_cycle else "",
+
             s.reason or "",
-            s.notes or "",
+            s.notes or ""
         ])
 
-    # Auto-width columns (rough heuristic based on content length)
     for col_cells in ws.columns:
-        length = max((len(str(c.value)) if c.value is not None else 0) for c in col_cells)
+        length = max(
+            len(str(cell.value))
+            if cell.value is not None else 0
+            for cell in col_cells
+        )
+
         col_letter = col_cells[0].column_letter
-        ws.column_dimensions[col_letter].width = min(max(length + 2, 10), 40)
+        ws.column_dimensions[col_letter].width = min(
+            max(length + 2, 10),
+            40
+        )
 
     ws.freeze_panes = "A2"
 
@@ -454,14 +528,22 @@ def export_excel():
     wb.save(buf)
     buf.seek(0)
 
-    filename = f"inventory_export_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    filename = (
+        f"inventory_export_"
+        f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    )
+
     return send_file(
         buf,
         as_attachment=True,
         download_name=filename,
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        mimetype=(
+            "application/vnd.openxmlformats-officedocument."
+            "spreadsheetml.sheet"
+        )
     )
-# ---------------- IMPORT TO EXCEL ----------------    
+
+  
 # ---------------- IMPORT TO EXCEL ----------------
 @app.route('/import/excel', methods=['POST'])
 @login_required
@@ -482,71 +564,128 @@ def import_excel():
         }), 400
 
     filename = secure_filename(file.filename)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+    if not filename.lower().endswith('.xlsx'):
+        return jsonify({
+            "status": "error",
+            "message": "Only .xlsx files are allowed."
+        }), 400
+
+    filepath = os.path.join(
+        app.config['UPLOAD_FOLDER'],
+        filename
+    )
+
     file.save(filepath)
 
-    wb = load_workbook(filepath)
-    ws = wb.active
-
-    imported = 0
-    skipped = 0
-    errors = []
-
-    # Skip Header
-    for row_number, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-
-        try:
-            timestamp = row[0]
-            serial = str(row[1]).strip() if row[1] else ""
-
-            # SERIAL NUMBER IS REQUIRED
-            if serial == "":
-                skipped += 1
-                errors.append(f"Row {row_number}: Serial Number is empty.")
-                continue
-
-            scan = InventoryScan(
-                code=serial,
-                device_type=row[2] or "Other",
-                imei=row[3],
-                mac_address=row[4],
-                department=row[5],
-                status=row[6] or "In Stock",
-                person_name=row[7],
-                employee_id=row[8],
-                email=row[9],
-                purchase_date=row[10],
-                return_date=row[11],
-                end_of_cycle=row[12],
-                reason=row[13],
-                notes=row[14],
-                timestamp=timestamp if isinstance(timestamp, datetime) else datetime.utcnow()
-            )
-
-            db.session.add(scan)
-            imported += 1
-
-        except Exception as e:
-            skipped += 1
-            errors.append(f"Row {row_number}: {str(e)}")
-
     try:
+        wb = load_workbook(filepath)
+        ws = wb.active
+
+        imported = 0
+        skipped = 0
+        errors = []
+
+        for row_number, row in enumerate(
+            ws.iter_rows(min_row=2, values_only=True),
+            start=2
+        ):
+
+            try:
+                timestamp = row[0]
+                serial = str(row[1]).strip() if row[1] else ""
+
+                if serial == "":
+                    skipped += 1
+                    errors.append(
+                        f"Row {row_number}: Serial Number is empty."
+                    )
+                    continue
+
+                status_value = str(row[6]).strip() \
+                    if row[6] else "In Stock"
+
+                substatus_value = str(row[7]).strip() \
+                    if row[7] else None
+
+                if status_value not in STATUSES:
+                    skipped += 1
+                    errors.append(
+                        f"Row {row_number}: Invalid status "
+                        f"'{status_value}'."
+                    )
+                    continue
+
+                valid_substatuses = SUBSTATUS_RULES.get(
+                    status_value,
+                    []
+                )
+
+                if valid_substatuses:
+                    if substatus_value not in valid_substatuses:
+                        skipped += 1
+                        errors.append(
+                            f"Row {row_number}: Invalid or missing "
+                            f"substatus '{substatus_value}' for "
+                            f"status '{status_value}'."
+                        )
+                        continue
+                else:
+                    substatus_value = None
+
+                scan = InventoryScan(
+                    code=serial,
+                    device_type=row[2] or "Other",
+                    imei=row[3],
+                    mac_address=row[4],
+                    department=row[5],
+                    status=status_value,
+                    substatus=substatus_value,
+                    person_name=row[8],
+                    employee_id=row[9],
+                    email=row[10],
+                    purchase_date=row[11],
+                    return_date=row[12],
+                    end_of_cycle=row[13],
+                    reason=row[14],
+                    notes=row[15],
+                    timestamp=(
+                        timestamp
+                        if isinstance(timestamp, datetime)
+                        else datetime.utcnow()
+                    )
+                )
+
+                db.session.add(scan)
+                imported += 1
+
+            except Exception as e:
+                skipped += 1
+                errors.append(
+                    f"Row {row_number}: {str(e)}"
+                )
+
         db.session.commit()
+
+        return jsonify({
+            "status": "success",
+            "imported": imported,
+            "skipped": skipped,
+            "errors": errors
+        })
+
     except Exception as e:
         db.session.rollback()
+
         return jsonify({
             "status": "error",
             "message": str(e)
         }), 500
 
-    os.remove(filepath)
+    finally:
+        if os.path.exists(filepath):
+            os.remove(filepath)
 
-    return jsonify({
-        "status": "success",
-        "imported": imported,
-        "skipped": skipped,
-        "errors": errors
-    })
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8506)
