@@ -3,7 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="connect-src 'self' https://esm.sh">
+    <meta
+    http-equiv="Content-Security-Policy"
+    content="
+        default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:;
+        script-src 'self' 'unsafe-inline' 'unsafe-eval'
+            https://cdn.jsdelivr.net
+            https://esm.sh;
+        style-src 'self' 'unsafe-inline'
+            https://cdn.jsdelivr.net;
+        img-src 'self' data: blob:;
+        font-src 'self' data: https://cdn.jsdelivr.net;
+        worker-src 'self' blob:;
+        connect-src 'self'
+            https://esm.sh
+            https://cdn.jsdelivr.net
+            https://fastly.jsdelivr.net;
+    "
+>
     <title>Inventory Control Pro</title>
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -595,16 +612,15 @@ function updateSubstatusOptions(status) {
     });
 }
 
-
-
-
 const toBase64 = f => new Promise((res) => {
     if (!f) return res(null);
+
     const r = new FileReader();
+
     r.readAsDataURL(f);
+
     r.onload = () => res(r.result);
 });
-
 
 async function confirmSetup() {
     const selectedStatus = document.querySelector(
@@ -615,7 +631,6 @@ async function confirmSetup() {
         'm_substatus'
     ).value;
 
-    // Substatus is required only for In Stock and Retired
     if (
         ['In Stock', 'Retired'].includes(selectedStatus) &&
         !selectedSubstatus
@@ -674,10 +689,11 @@ async function confirmSetup() {
 
         cfg = result.config;
 
-        const setupModalElement = document.getElementById('setupModal');
-        const setupModal = bootstrap.Modal.getInstance(
-            setupModalElement
-        );
+        const setupModalElement =
+            document.getElementById('setupModal');
+
+        const setupModal =
+            bootstrap.Modal.getInstance(setupModalElement);
 
         if (setupModal) {
             setupModal.hide();
