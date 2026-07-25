@@ -605,29 +605,7 @@ const toBase64 = f => new Promise((res) => {
     r.onload = () => res(r.result);
 });
 
-async function confirmSetup() {
-    const selectedStatus = document.querySelector(
-        'input[name="status"]:checked'
-    ).value;
 
-    const selectedSubstatus = document.getElementById(
-        'm_substatus'
-    ).value;
-
-    if (
-        ['In Stock', 'Retired'].includes(selectedStatus) &&
-        !selectedSubstatus
-    ) {
-        alert('Please select a substatus.');
-        return;
-    }
-
-    try {
-        // Existing code continues here
-
-
-
-// SETUP: send raw form to Python, let it validate + return config
 async function confirmSetup() {
     const selectedStatus = document.querySelector(
         'input[name="status"]:checked'
