@@ -244,6 +244,11 @@
                         <td>
                             {% if user.is_admin %}
                                 <button
+                                    class="btn btn-sm text-primary"
+                                    onclick="openEditModal({{ s.id }})">
+                                    ✏️
+                                </button>
+                                <button
                                     class="btn btn-sm text-danger"
                                     onclick="deleteSingle({{ s.id }})">
                                     🗑️
@@ -387,6 +392,118 @@
         </div>
     </div>
 </div>
+
+<!-- EDIT MODAL -->
+<div class="modal fade" id="editModal" data-bs-backdrop="static" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold">Edit Record</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <input type="hidden" id="e_id">
+
+                <div class="row bg-light p-3 rounded mb-4 border">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Serial / Code</label>
+                        <input type="text" id="e_code" class="form-control">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Device Type</label>
+                        <select id="e_device" class="form-select">
+                            <option value="Laptop">Laptop</option>
+                            <option value="Mobile">Mobile</option>
+                            <option value="Monitor">Monitor</option>
+                            <option value="Printer">Printer</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Employee Name</label>
+                        <input type="text" id="e_person_name" class="form-control">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Employee ID</label>
+                        <input type="text" id="e_employee_id" class="form-control">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Department</label>
+                        <select id="e_department" class="form-select">
+                            <option value="IT">IT</option>
+                            <option value="FINANCE">FINANCE</option>
+                            <option value="PROCUREMENT">PROCUREMENT</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">IMEI</label>
+                        <input type="text" id="e_imei" class="form-control">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">MAC Address</label>
+                        <input type="text" id="e_mac_address" class="form-control">
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Status</label>
+                    <select id="e_status" class="form-select" onchange="updateEditSubstatusOptions()">
+                        <option value="In Stock">In Stock</option>
+                        <option value="Loaned">Loaned</option>
+                        <option value="In Use">In Use</option>
+                        <option value="Repair">Repair</option>
+                        <option value="Retired">Retired</option>
+                    </select>
+                </div>
+
+                <div class="mb-3" id="e_substatus_group" style="display:none;">
+                    <label class="form-label fw-bold">Substatus</label>
+                    <select id="e_substatus" class="form-select">
+                        <option value="">Select substatus</option>
+                    </select>
+                </div>
+
+                <div class="mb-3" id="e_reason_group" style="display:none;">
+                    <label class="form-label fw-bold">Reactivation Reason</label>
+                    <input type="text" id="e_reason" class="form-control" placeholder="Why is this Retired unit being reactivated?">
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label small fw-bold">Purchase Date</label>
+                        <input type="date" id="e_purchase_date" class="form-control">
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label small fw-bold">Return Date</label>
+                        <input type="date" id="e_return_date" class="form-control">
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label small fw-bold">End Cycle</label>
+                        <input type="date" id="e_end_of_cycle" class="form-control">
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">Email</label>
+                    <input type="email" id="e_email" class="form-control">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">Notes</label>
+                    <textarea id="e_notes" class="form-control" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer border-0">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-primary fw-bold px-4" onclick="saveEditData()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+    
 <!-- CONFIRM MODAL (non-blocking replacement for confirm()/prompt()) -->
 <div class="modal fade" id="confirmModal" data-bs-backdrop="static" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -1077,6 +1194,144 @@ function deleteSingle(id) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ids: [id] })
         }).then(() => location.reload());
+    }
+}
+
+let editModalInstance, editOriginalStatus = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+    editModalInstance = new bootstrap.Modal(document.getElementById('editModal'));
+});
+
+function updateEditSubstatusOptions() {
+    const status = document.getElementById('e_status').value;
+    const group = document.getElementById('e_substatus_group');
+    const select = document.getElementById('e_substatus');
+    const reasonGroup = document.getElementById('e_reason_group');
+
+    const substatusOptions = {
+        "In Stock": ["New", "Active"],
+        "Loaned": ["Service Unit"],
+        "Repair": ["Ongoing"],
+        "Retired": ["Lost", "End of Life"]
+    };
+
+    const options = substatusOptions[status] || [];
+    select.innerHTML = '<option value="">Select substatus</option>';
+
+    if (options.length === 0) {
+        group.style.display = 'none';
+        select.disabled = true;
+        select.value = '';
+    } else if (status === "Loaned" || status === "Repair") {
+        select.innerHTML = '';
+        const opt = document.createElement('option');
+        opt.value = options[0];
+        opt.textContent = options[0];
+        opt.selected = true;
+        select.appendChild(opt);
+        select.disabled = true;
+        group.style.display = 'block';
+    } else {
+        select.disabled = false;
+        options.forEach(sub => {
+            const opt = document.createElement('option');
+            opt.value = sub;
+            opt.textContent = sub;
+            select.appendChild(opt);
+        });
+        group.style.display = 'block';
+    }
+
+    // Show reason field only when reactivating a Retired record to In Use
+    reasonGroup.style.display =
+        (editOriginalStatus === "Retired" && status === "In Use") ? 'block' : 'none';
+}
+
+async function openEditModal(scanId) {
+    try {
+        const res = await fetch(`/scan/${scanId}`);
+        const data = await res.json();
+
+        if (data.status !== "success") {
+            alert(data.message || "Unable to load record.");
+            return;
+        }
+
+        const s = data.scan;
+        editOriginalStatus = s.status;
+
+        document.getElementById('e_id').value = s.id;
+        document.getElementById('e_code').value = s.code;
+        document.getElementById('e_device').value = s.device_type;
+        document.getElementById('e_person_name').value = s.person_name;
+        document.getElementById('e_employee_id').value = s.employee_id;
+        document.getElementById('e_department').value = s.department;
+        document.getElementById('e_imei').value = s.imei;
+        document.getElementById('e_mac_address').value = s.mac_address;
+        document.getElementById('e_status').value = s.status;
+        document.getElementById('e_reason').value = s.reason;
+        document.getElementById('e_purchase_date').value = s.purchase_date;
+        document.getElementById('e_return_date').value = s.return_date;
+        document.getElementById('e_end_of_cycle').value = s.end_of_cycle;
+        document.getElementById('e_email').value = s.email;
+        document.getElementById('e_notes').value = s.notes;
+
+        updateEditSubstatusOptions();
+        document.getElementById('e_substatus').value = s.substatus;
+
+        editModalInstance.show();
+    } catch (err) {
+        console.error(err);
+        alert("Network error while loading record.");
+    }
+}
+
+async function saveEditData() {
+    const status = document.getElementById('e_status').value;
+
+    if (editOriginalStatus === "Retired" && status === "In Use" &&
+        !document.getElementById('e_reason').value.trim()) {
+        alert("A reason is required to reactivate a Retired unit.");
+        return;
+    }
+
+    const payload = {
+        code: document.getElementById('e_code').value,
+        device_type: document.getElementById('e_device').value,
+        person_name: document.getElementById('e_person_name').value,
+        employee_id: document.getElementById('e_employee_id').value,
+        department: document.getElementById('e_department').value,
+        imei: document.getElementById('e_imei').value,
+        mac_address: document.getElementById('e_mac_address').value,
+        status: status,
+        substatus: document.getElementById('e_substatus').value,
+        reason: document.getElementById('e_reason').value,
+        purchase_date: document.getElementById('e_purchase_date').value,
+        return_date: document.getElementById('e_return_date').value,
+        end_of_cycle: document.getElementById('e_end_of_cycle').value,
+        email: document.getElementById('e_email').value,
+        notes: document.getElementById('e_notes').value
+    };
+
+    const id = document.getElementById('e_id').value;
+
+    try {
+        const res = await fetch(`/scan/${id}/edit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (data.status === "success") {
+            location.reload();
+        } else {
+            alert(data.message || "Save failed.");
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Network error while saving.");
     }
 }
 
