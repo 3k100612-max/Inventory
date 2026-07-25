@@ -38,6 +38,17 @@ def add_csp(resp):
         "connect-src 'self' https://esm.sh https://cdn.jsdelivr.net https://fastly.jsdelivr.net;"
     )
     return resp
+    
+def get_valid_substatus(status, substatus):
+    valid_values = SUBSTATUS_RULES.get(status, [])
+
+    if not valid_values:
+        return None
+
+    if substatus not in valid_values:
+        return None
+
+    return substatus
 
 
 # ---------------- MODELS ----------------
@@ -60,6 +71,7 @@ class InventoryScan(db.Model):
     device_type = db.Column(db.String(100), nullable=False)
     department = db.Column(db.String(100))
     status = db.Column(db.String(50), nullable=False)
+    substatus = db.Column(db.String(50))
     is_flagged = db.Column(db.Boolean, default=False, nullable=False)
     person_name = db.Column(db.String(100)); employee_id = db.Column(db.String(50))
     email = db.Column(db.String(120))
@@ -76,6 +88,7 @@ def load_user(uid): return User.query.get(int(uid))
 DEVICE_TYPES = ["Laptop", "Mobile", "Monitor", "Printer", "Other"]
 DEPARTMENTS  = ["IT", "FINANCE", "PROCUREMENT", "Other"]
 STATUSES     = ["In Stock", "Loaned", "In Use", "Repair", "Retired"]
+SUBSTATUS_RULES = {"In Stock": [ "New", "Active"],"Retired": ["Lost","End of Life"]}
 
 # Which extra fields each status needs. Client just renders what Python says.
 STATUS_FIELD_RULES = {
@@ -105,6 +118,7 @@ def init_db():
                db.session.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE'))
                db.session.execute(text('ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS reason TEXT'))
                db.session.execute(text('ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN DEFAULT FALSE'))
+                db.session.execute(text('ALTER TABLE inventory_scan ''ADD COLUMN IF NOT EXISTS substatus VARCHAR(50)'))
                db.session.commit()
             except Exception: db.session.rollback()
             if not User.query.filter_by(username='admin').first():
@@ -169,12 +183,27 @@ def session_start():
     status = sanitize(d.get('status'))
     if status not in STATUSES:
         return jsonify({"ok": False, "error": "Invalid status."}), 400
+    
+    substatus = sanitize(d.get('substatus'))
+
+    valid_substatuses = SUBSTATUS_RULES.get(status, [])
+
+    if valid_substatuses and substatus not in valid_substatuses:
+       return jsonify({
+        "ok": False,
+        "error": f"Substatus is required for {status}. "
+                  f"Choose one of: {', '.join(valid_substatuses)}."
+       }), 400
+
+    if not valid_substatuses:
+       substatus = None
+
 
     base = device if device in DEVICE_IDENTIFIER_RULES else 'Other'
 
     # Store the authoritative session server-side.
     flask_session['scan_cfg'] = {
-        "user": user, "empId": emp, "device": device, "dept": dept, "status": status,
+        "user": user, "empId": emp, "device": device, "dept": dept, "status": status,"substatus": substatus,
         "scanMode": sanitize(d.get('scanMode')) or "Single",
         "email": sanitize(d.get('email'), 120), "date": sanitize(d.get('date')),
         "purchase": sanitize(d.get('purchase')), "end": sanitize(d.get('end')),
@@ -183,7 +212,7 @@ def session_start():
     }
     return jsonify({"ok": True, "config": {
         "user": user, "empId": emp, "device": device, "dept": dept,
-        "status": status, "scanMode": flask_session['scan_cfg']['scanMode'],
+        "status": status,"substatus": substatus, "scanMode": flask_session['scan_cfg']['scanMode'],
         "requiredFields": STATUS_FIELD_RULES.get(status, []),
         "identifiers": flask_session['scan_cfg']['identifiers'],
     }})
@@ -305,6 +334,7 @@ def scanned():
             device_type=cfg["device"],
             department=cfg["dept"],
             status=cfg["status"],
+            substatus=cfg["substatus"],
             person_name=cfg["user"],
             employee_id=cfg["empId"],
             email=cfg["email"],
