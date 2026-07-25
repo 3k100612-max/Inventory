@@ -637,21 +637,28 @@ def import_excel():
                     continue
 
                 valid_substatuses = SUBSTATUS_RULES.get(
-                    status_value,
-                    []
-                )
-
-                if valid_substatuses:
-                    if substatus_value not in valid_substatuses:
-                        skipped += 1
-                        errors.append(
-                            f"Row {row_number}: Invalid or missing "
-                            f"substatus '{substatus_value}' for "
-                            f"status '{status_value}'."
-                        )
-                        continue
-                else:
-                    substatus_value = None
+                status_value,
+                []
+            )
+            
+            if status_value == "Loaned":
+                substatus_value = "Service Unit"
+            
+            elif status_value == "Repair":
+                substatus_value = "Ongoing"
+            
+            elif valid_substatuses:
+                if substatus_value not in valid_substatuses:
+                    skipped += 1
+                    errors.append(
+                        f"Row {row_number}: Invalid or missing "
+                        f"substatus '{substatus_value}' for "
+                        f"status '{status_value}'."
+                    )
+                    continue
+            
+            else:
+                substatus_value = None
 
                 scan = InventoryScan(
                     code=serial,
