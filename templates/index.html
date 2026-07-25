@@ -629,28 +629,47 @@ async function confirmSetup() {
 
 // SETUP: send raw form to Python, let it validate + return config
 async function confirmSetup() {
+    const selectedStatus = document.querySelector(
+        'input[name="status"]:checked'
+    ).value;
+
+    const selectedSubstatus = document.getElementById(
+        'm_substatus'
+    ).value;
+
+    // Substatus is required only for In Stock and Retired
+    if (
+        ['In Stock', 'Retired'].includes(selectedStatus) &&
+        !selectedSubstatus
+    ) {
+        alert('Please select a substatus.');
+        return;
+    }
+
     try {
         const body = {
             user: document.getElementById('m_user').value,
             empId: document.getElementById('m_emp_id').value,
+
             device: document.getElementById('m_device').value,
             otherDevice: document.getElementById('m_other_device').value,
+
             dept: document.getElementById('m_dept').value,
             otherDept: document.getElementById('m_other_dept').value,
+
             scanMode: document.querySelector(
                 'input[name="scan_mode"]:checked'
             ).value,
-            status: document.querySelector(
-                'input[name="status"]:checked'
-            ).value,
-        
-            substatus: document.getElementById('m_substatus').value,
-        
+
+            status: selectedStatus,
+            substatus: selectedSubstatus,
+
             email: document.getElementById('m_email').value,
             date: document.getElementById('m_date').value,
             notes: document.getElementById('m_notes').value,
             purchase: document.getElementById('m_purchase').value,
             end: document.getElementById('m_end').value,
+
             image_data: await toBase64(
                 document.getElementById('m_image').files[0]
             )
@@ -664,33 +683,36 @@ async function confirmSetup() {
             body: JSON.stringify(body)
         });
 
-        if (!response.ok) {
-            const txt = await response.text();
-            console.error(txt);
-            alert("Server Error:\n\n" + txt);
+        const result = await response.json();
+
+        if (!response.ok || !result.ok) {
+            alert(
+                result.error ||
+                result.message ||
+                'Unable to start scanning session.'
+            );
             return;
         }
 
-        const res = await response.json();
+        cfg = result.config;
 
-        if (!res.ok) {
-            alert(res.error);
-            return;
+        const setupModalElement = document.getElementById('setupModal');
+        const setupModal = bootstrap.Modal.getInstance(
+            setupModalElement
+        );
+
+        if (setupModal) {
+            setupModal.hide();
         }
-
-        cfg = res.config;
-
-        bootstrap.Modal.getInstance(
-            document.getElementById('setupModal')
-        ).hide();
 
         await startScanner();
 
-    } catch (err) {
-        console.error(err);
-        alert(err);
+    } catch (error) {
+        console.error('Session start error:', error);
+        alert('Unable to start the scanning session.');
     }
 }
+
 
 // On every serial scan, ASK Python whether to accept it
 async function onSerialScanned(text) {
