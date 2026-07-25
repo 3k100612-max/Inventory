@@ -80,6 +80,7 @@ STATUSES     = ["In Stock", "Loaned", "In Use", "Repair", "Retired"]
 SUBSTATUS_RULES = {
     "In Stock": ["New", "Active"],
     "Loaned": ["Service Unit"],
+    "In Use": ["Active"], 
     "Repair": ["Ongoing"],
     "Retired": ["Lost", "End of Life"]
 }
@@ -232,6 +233,9 @@ def session_start():
     elif status == "Repair":
         # Repair always receives this substatus
         substatus = "Ongoing"
+
+    elif status == "In Use":   
+    substatus = "Active"                 
 
     elif valid_substatuses:
         # In Stock and Retired require user selection
@@ -485,6 +489,8 @@ def edit_scan(scan_id):
         substatus_value = "Service Unit"
     elif status_value == "Repair":
         substatus_value = "Ongoing"
+    elif status_value == "In Use":            # NEW
+        substatus_value = "Active" 
     elif valid_substatuses:
         if substatus_value not in valid_substatuses:
             return jsonify({
@@ -762,6 +768,9 @@ def import_excel():
                 elif status_value == "Repair":
                     # Automatically assign Repair substatus
                     substatus_value = "Ongoing"
+
+                elif status_value == "In Use":            # NEW
+                    substatus_value = "Active"
 
                 elif valid_substatuses:
                     # In Stock and Retired require validation
