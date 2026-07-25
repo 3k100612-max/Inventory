@@ -208,19 +208,20 @@ def session_start():
     # Validate substatus based on the selected main status
     substatus = sanitize(d.get('substatus'))
     # Determine and validate substatus based on the selected status
-    valid_substatuses = SUBSTATUS_RULES.get(status, [])
+    # Determine and validate substatus based on the selected status
+valid_substatuses = SUBSTATUS_RULES.get(status, [])
 
-    if status == "Loaned":
+if status == "Loaned":
     # Loaned always gets this substatus automatically
-        substatus = "Service Unit"
+    substatus = "Service Unit"
 
-    elif status == "Repair":
+elif status == "Repair":
     # Repair always gets this substatus automatically
-        substatus = "Ongoing"
+    substatus = "Ongoing"
 
-    elif valid_substatuses:
-    # In Stock and Retired require the user to select a substatus
-        substatus = sanitize(d.get('substatus'))
+elif valid_substatuses:
+    # In Stock and Retired require user selection
+    substatus = sanitize(d.get('substatus'))
 
     if substatus not in valid_substatuses:
         return jsonify({
@@ -231,9 +232,10 @@ def session_start():
             )
         }), 400
 
-    else:
+else:
     # In Use does not use a substatus
-        substatus = None
+    substatus = None
+
 
 
     base = device if device in DEVICE_IDENTIFIER_RULES else 'Other'
@@ -637,29 +639,33 @@ def import_excel():
                     continue
 
                 valid_substatuses = SUBSTATUS_RULES.get(
-                status_value,
-                []
-            )
-            
-            if status_value == "Loaned":
-                substatus_value = "Service Unit"
-            
-            elif status_value == "Repair":
-                substatus_value = "Ongoing"
-            
-            elif valid_substatuses:
-                if substatus_value not in valid_substatuses:
-                    skipped += 1
-                    errors.append(
-                        f"Row {row_number}: Invalid or missing "
-                        f"substatus '{substatus_value}' for "
-                        f"status '{status_value}'."
-                    )
-                    continue
-            
-            else:
-                substatus_value = None
-
+                    status_value,
+                    []
+                )
+                
+                if status_value == "Loaned":
+                    # Automatically correct Loaned substatus
+                    substatus_value = "Service Unit"
+                
+                elif status_value == "Repair":
+                    # Automatically correct Repair substatus
+                    substatus_value = "Ongoing"
+                
+                elif valid_substatuses:
+                    # In Stock and Retired require a valid substatus
+                    if substatus_value not in valid_substatuses:
+                        skipped += 1
+                        errors.append(
+                            f"Row {row_number}: Invalid or missing "
+                            f"substatus '{substatus_value}' for "
+                            f"status '{status_value}'."
+                        )
+                        continue
+                
+                else:
+                    # In Use has no substatus
+                    substatus_value = None
+                
                 scan = InventoryScan(
                     code=serial,
                     device_type=row[2] or "Other",
@@ -682,9 +688,10 @@ def import_excel():
                         else datetime.utcnow()
                     )
                 )
-
+                
                 db.session.add(scan)
                 imported += 1
+
 
             except Exception as e:
                 skipped += 1
