@@ -584,6 +584,8 @@ function updateSubstatusOptions(status) {
 
     const substatusOptions = {
         "In Stock": ["New", "Active"],
+        "Loaned": ["Service Unit"],
+        "Repair": ["Ongoing"],
         "Retired": ["Lost", "End of Life"]
     };
 
@@ -595,11 +597,32 @@ function updateSubstatusOptions(status) {
     if (options.length === 0) {
         group.style.display = 'none';
         select.required = false;
+        select.disabled = true;
         select.value = '';
         return;
     }
 
     group.style.display = 'block';
+
+    // Loaned and Repair are automatically assigned
+    if (status === "Loaned" || status === "Repair") {
+        select.innerHTML = '';
+
+        const option = document.createElement('option');
+        option.value = options[0];
+        option.textContent = options[0];
+        option.selected = true;
+
+        select.appendChild(option);
+
+        select.required = false;
+        select.disabled = true;
+
+        return;
+    }
+
+    // In Stock and Retired require user selection
+    select.disabled = false;
     select.required = true;
 
     options.forEach(function(substatus) {
@@ -611,6 +634,8 @@ function updateSubstatusOptions(status) {
         select.appendChild(option);
     });
 }
+
+
 
 const toBase64 = f => new Promise((res) => {
     if (!f) return res(null);
