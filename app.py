@@ -235,7 +235,7 @@ def session_start():
         substatus = "Ongoing"
 
     elif status == "In Use":   
-    substatus = "Active"                 
+        substatus = "Active"                 
 
     elif valid_substatuses:
         # In Stock and Retired require user selection
