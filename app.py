@@ -38,22 +38,9 @@ def add_csp(resp):
         "connect-src 'self' https://esm.sh https://cdn.jsdelivr.net https://fastly.jsdelivr.net;"
     )
     return resp
-    
-def get_valid_substatus(status, substatus):
-    valid_values = SUBSTATUS_RULES.get(status, [])
-
-    if not valid_values:
-        return None
-
-    if substatus not in valid_values:
-        return None
-
-    return substatus
 
 
 # ---------------- MODELS ----------------
-
-
 
 class User(UserMixin, db.Model):
     __tablename__ = 'user'
@@ -61,12 +48,12 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(100), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
     is_admin = db.Column(db.Boolean, default=False)
-   
-    
+
+
 class InventoryScan(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(100), nullable=False)
-    imei = db.Column(db.String(100)); 
+    imei = db.Column(db.String(100))
     mac_address = db.Column(db.String(100))
     device_type = db.Column(db.String(100), nullable=False)
     department = db.Column(db.String(100))
@@ -77,24 +64,25 @@ class InventoryScan(db.Model):
     email = db.Column(db.String(120))
     return_date = db.Column(db.Date); purchase_date = db.Column(db.Date); end_of_cycle = db.Column(db.Date)
     notes = db.Column(db.Text); image_data = db.Column(db.Text)
-    reason = db.Column(db.Text)   # NEW — why a Retired unit was reactivated, etc.
+    reason = db.Column(db.Text)   # why a Retired unit was reactivated, etc.
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-   
+
+
 @login_manager.user_loader
 def load_user(uid): return User.query.get(int(uid))
 
+
 # ---------------- SCANNING RULES (the "brain") ----------------
-# This dict is now the ONE place that defines scanning behavior.
 DEVICE_TYPES = ["Laptop", "Mobile", "Monitor", "Printer", "Other"]
 DEPARTMENTS  = ["IT", "FINANCE", "PROCUREMENT", "Other"]
 STATUSES     = ["In Stock", "Loaned", "In Use", "Repair", "Retired"]
+
 SUBSTATUS_RULES = {
     "In Stock": ["New", "Active"],
     "Loaned": ["Service Unit"],
     "Repair": ["Ongoing"],
     "Retired": ["Lost", "End of Life"]
 }
-
 
 # Which extra fields each status needs. Client just renders what Python says.
 STATUS_FIELD_RULES = {
@@ -106,7 +94,6 @@ STATUS_FIELD_RULES = {
 }
 
 # Which identifiers Python will ask the client to scan, per device type.
-# This replaces the hardcoded "Scan IMEI / Scan MAC" buttons logic.
 DEVICE_IDENTIFIER_RULES = {
     "Laptop":  ["mac"],
     "Mobile":  ["imei", "mac"],
@@ -115,25 +102,53 @@ DEVICE_IDENTIFIER_RULES = {
     "Other":   [],
 }
 
+
 # ---------------- INIT ----------------
 def init_db():
     with app.app_context():
         try:
             db.create_all()
+
             try:
-               db.session.execute(text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE'))
-               db.session.execute(text('ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS reason TEXT'))
-               db.session.execute(text('ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN DEFAULT FALSE'))
-               db.session.execute(text('ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS substatus VARCHAR(50)'))
-               db.session.commit()
-            except Exception: db.session.rollback()
-            if not User.query.filter_by(username='admin').first():
-                db.session.add(User(username='admin', password=generate_password_hash('P12345'),
-                                     is_admin=True))
+                db.session.execute(text(
+                    'ALTER TABLE "user" '
+                    'ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE'
+                ))
+
+                db.session.execute(text(
+                    'ALTER TABLE inventory_scan '
+                    'ADD COLUMN IF NOT EXISTS reason TEXT'
+                ))
+
+                db.session.execute(text(
+                    'ALTER TABLE inventory_scan '
+                    'ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN DEFAULT FALSE'
+                ))
+
+                db.session.execute(text(
+                    'ALTER TABLE inventory_scan '
+                    'ADD COLUMN IF NOT EXISTS substatus VARCHAR(50)'
+                ))
+
                 db.session.commit()
+
+            except Exception as e:
+                db.session.rollback()
+                print(f"Database migration error: {e}", file=sys.stderr)
+
+            if not User.query.filter_by(username='admin').first():
+                db.session.add(User(
+                    username='admin',
+                    password=generate_password_hash('P12345'),
+                    is_admin=True
+                ))
+                db.session.commit()
+
         except Exception as e:
             print(f"DB Init Error: {e}", file=sys.stderr)
+
 init_db()
+
 
 def sanitize(val, length=100):
     if not val: return None
@@ -142,6 +157,7 @@ def sanitize(val, length=100):
 def parse_dt(s):
     try: return datetime.strptime(s, '%Y-%m-%d').date() if s else None
     except: return None
+
 
 # ---------------- AUTH / PAGES ----------------
 @app.route('/login', methods=['GET', 'POST'])
@@ -171,6 +187,7 @@ def index():
     return render_template('index.html', scans=scans, user=current_user,
                            device_types=DEVICE_TYPES, departments=DEPARTMENTS, statuses=STATUSES,
                            flagged_codes=flagged_codes)
+
 
 # ---------------- SESSION: Python validates + owns config ----------------
 @app.route('/session/start', methods=['POST'])
@@ -205,38 +222,33 @@ def session_start():
             "error": "Invalid status."
         }), 400
 
-    # Validate substatus based on the selected main status
-    substatus = sanitize(d.get('substatus'))
-    # Determine and validate substatus based on the selected status
-    # Determine and validate substatus based on the selected status
-valid_substatuses = SUBSTATUS_RULES.get(status, [])
+    # Determine and validate substatus
+    valid_substatuses = SUBSTATUS_RULES.get(status, [])
 
-if status == "Loaned":
-    # Loaned always gets this substatus automatically
-    substatus = "Service Unit"
+    if status == "Loaned":
+        # Loaned always receives this substatus
+        substatus = "Service Unit"
 
-elif status == "Repair":
-    # Repair always gets this substatus automatically
-    substatus = "Ongoing"
+    elif status == "Repair":
+        # Repair always receives this substatus
+        substatus = "Ongoing"
 
-elif valid_substatuses:
-    # In Stock and Retired require user selection
-    substatus = sanitize(d.get('substatus'))
+    elif valid_substatuses:
+        # In Stock and Retired require user selection
+        substatus = sanitize(d.get('substatus'))
 
-    if substatus not in valid_substatuses:
-        return jsonify({
-            "ok": False,
-            "error": (
-                f"Substatus is required for {status}. "
-                f"Choose one of: {', '.join(valid_substatuses)}."
-            )
-        }), 400
+        if substatus not in valid_substatuses:
+            return jsonify({
+                "ok": False,
+                "error": (
+                    f"Substatus is required for {status}. "
+                    f"Choose one of: {', '.join(valid_substatuses)}."
+                )
+            }), 400
 
-else:
-    # In Use does not use a substatus
-    substatus = None
-
-
+    else:
+        # In Use does not have a substatus
+        substatus = None
 
     base = device if device in DEVICE_IDENTIFIER_RULES else 'Other'
 
@@ -341,6 +353,7 @@ def scan_check():
 
     return jsonify(result)
 
+
 # ---------------- SAVE: uses server-side session, not client claims ----------------
 @app.route('/scanned', methods=['POST'])
 @login_required
@@ -367,10 +380,7 @@ def scanned():
             "message": "A reason is required to reactivate a Retired unit."
         }), 400
 
-    # -------------------------------
-    # Automatically determine if this
-    # serial should be flagged
-    # -------------------------------
+    # Automatically determine if this serial should be flagged
     is_flagged = False
 
     if cfg["status"] == "Repair":
@@ -401,8 +411,6 @@ def scanned():
             notes=cfg["notes"],
             image_data=cfg["image_data"],
             reason=reason,
-
-            # NEW
             is_flagged=is_flagged
         )
 
@@ -422,7 +430,8 @@ def scanned():
             "message": str(e)
         }), 500
 
-# ---------------- ADMIN (unchanged) ----------------
+
+# ---------------- ADMIN ----------------
 @app.route('/admin/users', methods=['GET', 'POST'])
 @login_required
 def manage_users():
@@ -454,6 +463,7 @@ def delete_scans():
     InventoryScan.query.filter(InventoryScan.id.in_(ids)).delete(synchronize_session=False)
     db.session.commit()
     return jsonify({"status": "success"})
+
 
 # ---------------- EXPORT TO EXCEL ----------------
 @app.route('/export/excel')
@@ -565,7 +575,7 @@ def export_excel():
         )
     )
 
-  
+
 # ---------------- IMPORT TO EXCEL ----------------
 @app.route('/import/excel', methods=['POST'])
 @login_required
@@ -612,23 +622,28 @@ def import_excel():
             ws.iter_rows(min_row=2, values_only=True),
             start=2
         ):
-
             try:
                 timestamp = row[0]
                 serial = str(row[1]).strip() if row[1] else ""
 
-                if serial == "":
+                if not serial:
                     skipped += 1
                     errors.append(
                         f"Row {row_number}: Serial Number is empty."
                     )
                     continue
 
-                status_value = str(row[6]).strip() \
-                    if row[6] else "In Stock"
+                status_value = (
+                    str(row[6]).strip()
+                    if row[6]
+                    else "In Stock"
+                )
 
-                substatus_value = str(row[7]).strip() \
-                    if row[7] else None
+                substatus_value = (
+                    str(row[7]).strip()
+                    if row[7]
+                    else None
+                )
 
                 if status_value not in STATUSES:
                     skipped += 1
@@ -642,17 +657,17 @@ def import_excel():
                     status_value,
                     []
                 )
-                
+
                 if status_value == "Loaned":
-                    # Automatically correct Loaned substatus
+                    # Automatically assign Loaned substatus
                     substatus_value = "Service Unit"
-                
+
                 elif status_value == "Repair":
-                    # Automatically correct Repair substatus
+                    # Automatically assign Repair substatus
                     substatus_value = "Ongoing"
-                
+
                 elif valid_substatuses:
-                    # In Stock and Retired require a valid substatus
+                    # In Stock and Retired require validation
                     if substatus_value not in valid_substatuses:
                         skipped += 1
                         errors.append(
@@ -661,11 +676,11 @@ def import_excel():
                             f"status '{status_value}'."
                         )
                         continue
-                
+
                 else:
                     # In Use has no substatus
                     substatus_value = None
-                
+
                 scan = InventoryScan(
                     code=serial,
                     device_type=row[2] or "Other",
@@ -688,10 +703,9 @@ def import_excel():
                         else datetime.utcnow()
                     )
                 )
-                
+
                 db.session.add(scan)
                 imported += 1
-
 
             except Exception as e:
                 skipped += 1
