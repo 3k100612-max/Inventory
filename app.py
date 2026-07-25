@@ -443,20 +443,20 @@ def get_scan(scan_id):
         "scan": {
             "id": s.id,
             "code": s.code,
-            "imei": s.imei,
-            "mac_address": s.mac_address,
+            "imei": s.imei or "",
+            "mac_address": s.mac_address or "",
             "device_type": s.device_type,
-            "department": s.department,
+            "department": s.department or "",
             "status": s.status,
-            "substatus": s.substatus,
-            "person_name": s.person_name,
-            "employee_id": s.employee_id,
-            "email": s.email,
+            "substatus": s.substatus or "",
+            "person_name": s.person_name or "",
+            "employee_id": s.employee_id or "",
+            "email": s.email or "",
             "purchase_date": s.purchase_date.strftime('%Y-%m-%d') if s.purchase_date else "",
             "return_date": s.return_date.strftime('%Y-%m-%d') if s.return_date else "",
             "end_of_cycle": s.end_of_cycle.strftime('%Y-%m-%d') if s.end_of_cycle else "",
-            "reason": s.reason,
-            "notes": s.notes
+            "reason": s.reason or "",
+            "notes": s.notes or ""
         }
     })
 
@@ -494,6 +494,17 @@ def edit_scan(scan_id):
     else:
         substatus_value = None
 
+    if status_value == "In Use" and s.status == "Retired":
+        reason = sanitize(d.get('reason'), 500)
+        if not reason:
+            return jsonify({
+                "status": "error",
+                "message": "A reason is required to reactivate a Retired unit."
+            }), 400
+        s.reason = reason
+    else:
+        s.reason = sanitize(d.get('reason'), 500)
+
     try:
         s.code = sanitize(d.get('code')) or s.code
         s.imei = sanitize(d.get('imei'))
@@ -508,7 +519,6 @@ def edit_scan(scan_id):
         s.purchase_date = parse_dt(d.get('purchase_date'))
         s.return_date = parse_dt(d.get('return_date'))
         s.end_of_cycle = parse_dt(d.get('end_of_cycle'))
-        s.reason = sanitize(d.get('reason'), 500)
         s.notes = sanitize(d.get('notes'), 1000)
 
         db.session.commit()
