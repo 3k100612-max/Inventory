@@ -6,3 +6,5 @@ Werkzeug
 python-dotenv
 gunicorn
 openpyxl
+opencv-python-headless
+numpy
