@@ -155,6 +155,15 @@ def sanitize(val, length=100):
     if not val: return None
     return html.escape(str(val).strip()[:length])
 
+def sanitize_title(val, length=100):
+    """Like sanitize(), but normalizes casing for free-text 'Other' entries
+    to 'First letter capital, rest lowercase' — e.g. 'HARD DRIVE', 'hard drive',
+    and 'HaRd DrIvE' all become 'Hard drive'."""
+    cleaned = sanitize(val, length)
+    if not cleaned:
+        return None
+    return cleaned.capitalize()
+
 def parse_dt(s):
     try: return datetime.strptime(s, '%Y-%m-%d').date() if s else None
     except: return None
@@ -208,12 +217,12 @@ def session_start():
     device = sanitize(d.get('device'))
 
     if device == 'Other':
-        device = sanitize(d.get('otherDevice')) or 'Other'
+        device = sanitize_title(d.get('otherDevice')) or 'Other'
 
     dept = sanitize(d.get('dept'))
 
     if dept == 'Other':
-        dept = sanitize(d.get('otherDept')) or 'Other'
+        dept = sanitize_title(d.get('otherDept')) or 'Other'
 
     status = sanitize(d.get('status'))
 
