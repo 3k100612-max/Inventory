@@ -73,6 +73,7 @@ login_manager.login_view = 'login'
 @app.after_request
 def add_security_headers(resp):
     resp.headers["Content-Security-Policy"] = (
+        
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' "
         "https://cdn.jsdelivr.net "
@@ -83,6 +84,7 @@ def add_security_headers(resp):
         "media-src 'self' blob:; "
         "connect-src 'self' "
         "https://esm.sh "
+        "https://unpkg.com "
         "https://cdn.jsdelivr.net "
         "https://fastly.jsdelivr.net; "
         "worker-src 'self' blob:; "
