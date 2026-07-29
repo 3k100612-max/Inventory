@@ -14,15 +14,42 @@ from openpyxl import load_workbook
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'change-this-in-hostinger-settings')
-DB_USER = os.environ.get('DB_USER'); DB_PASS = os.environ.get('DB_PASS')
-DB_HOST = os.environ.get('DB_HOST'); DB_NAME = os.environ.get('DB_NAME')
-app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-UPLOAD_FOLDER = "uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024 * 1024
+
+# Set SECRET_KEY in your hosting environment.
+app.config["SECRET_KEY"] = os.environ.get(
+    "SECRET_KEY",
+    "replace-this-with-a-long-random-secret"
+)
+
+DB_USER = os.environ.get("DB_USER")
+DB_PASS = os.environ.get("DB_PASS")
+DB_HOST = os.environ.get("DB_HOST")
+DB_NAME = os.environ.get("DB_NAME")
+
+if not all([DB_USER, DB_PASS, DB_HOST, DB_NAME]):
+    raise RuntimeError(
+        "DB_USER, DB_PASS, DB_HOST and DB_NAME must be configured."
+    )
+
+app.config["SQLALCHEMY_DATABASE_URI"] = (
+    f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}"
+)
+
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+# Database connection pooling
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "pool_size": 10,
+    "max_overflow": 20,
+    "pool_timeout": 30,
+    "pool_recycle": 1800,
+    "pool_pre_ping": True,
+}
+
+# Do not allow a 2 GB request into memory.
+# Excel imports should normally be limited to a reasonable size.
+app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024
+
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
@@ -31,13 +58,25 @@ login_manager.login_view = 'login'
 # --- SECURITY HEADERS (Content Security Policy) ---
 @app.after_request
 def add_csp(resp):
-    resp.headers['Content-Security-Policy'] = (
-        "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: "
-        "https://esm.sh https://cdn.jsdelivr.net https://fastly.jsdelivr.net; "
+    resp.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' "
+        "https://cdn.jsdelivr.net "
+        "https://esm.sh; "
+        "style-src 'self' 'unsafe-inline' "
+        "https://cdn.jsdelivr.net; "
+        "img-src 'self' data: blob:; "
+        "media-src 'self' blob:; "
+        "connect-src 'self' "
+        "https://esm.sh "
+        "https://cdn.jsdelivr.net "
+        "https://fastly.jsdelivr.net; "
         "worker-src 'self' blob:; "
-        "connect-src 'self' https://esm.sh https://cdn.jsdelivr.net https://fastly.jsdelivr.net;"
+        "font-src 'self' data: "
+        "https://cdn.jsdelivr.net;"
     )
     return resp
+
 
 
 # ---------------- MODELS ----------------
@@ -51,21 +90,54 @@ class User(UserMixin, db.Model):
 
 
 class InventoryScan(db.Model):
+    __tablename__ = "inventory_scan"
+
     id = db.Column(db.Integer, primary_key=True)
-    code = db.Column(db.String(100), nullable=False)
-    imei = db.Column(db.String(100))
-    mac_address = db.Column(db.String(100))
+
+    # Indexes make repeated barcode/serial searches much faster.
+    code = db.Column(
+        db.String(100),
+        nullable=False,
+        index=True
+    )
+
+    imei = db.Column(db.String(100), index=True)
+    mac_address = db.Column(db.String(100), index=True)
+
     device_type = db.Column(db.String(100), nullable=False)
     department = db.Column(db.String(100))
-    status = db.Column(db.String(50), nullable=False)
+    status = db.Column(db.String(50), nullable=False, index=True)
     substatus = db.Column(db.String(50))
-    is_flagged = db.Column(db.Boolean, default=False, nullable=False)
-    person_name = db.Column(db.String(100)); employee_id = db.Column(db.String(50))
+
+    is_flagged = db.Column(
+        db.Boolean,
+        default=False,
+        nullable=False,
+        index=True
+    )
+
+    person_name = db.Column(db.String(100))
+    employee_id = db.Column(db.String(50))
     email = db.Column(db.String(120))
-    return_date = db.Column(db.Date); purchase_date = db.Column(db.Date); end_of_cycle = db.Column(db.Date)
-    notes = db.Column(db.Text); image_data = db.Column(db.Text)
-    reason = db.Column(db.Text)   # why a Retired unit was reactivated, etc.
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
+    return_date = db.Column(db.Date)
+    purchase_date = db.Column(db.Date)
+    end_of_cycle = db.Column(db.Date)
+
+    notes = db.Column(db.Text)
+
+    # Store a filename or URL here, not a complete base64 image.
+    image_data = db.Column(db.String(255))
+
+    reason = db.Column(db.Text)
+
+    timestamp = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+        index=True
+    )
+
 
 
 @login_manager.user_loader
@@ -130,8 +202,22 @@ def init_db():
                     'ALTER TABLE inventory_scan '
                     'ADD COLUMN IF NOT EXISTS substatus VARCHAR(50)'
                 ))
+                db.session.execute(text("""
+                    CREATE INDEX IF NOT EXISTS ix_inventory_scan_code_timestamp
+                    ON inventory_scan (code, timestamp DESC)
+                """))
+            
+                db.session.execute(text("""
+                    CREATE INDEX IF NOT EXISTS ix_inventory_scan_code_status
+                    ON inventory_scan (code, status)
+                """))
+            
+                db.session.execute(text("""
+                    CREATE INDEX IF NOT EXISTS ix_inventory_scan_timestamp
+                    ON inventory_scan (timestamp DESC)
+                """))
 
-                db.session.commit()
+            db.session.commit()
 
             except Exception as e:
                 db.session.rollback()
