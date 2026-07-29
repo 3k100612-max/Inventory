@@ -400,8 +400,7 @@
 
     // Only the formats an inventory app needs: QR + common linear barcodes.
     window.ZXING_BARCODE_FORMATS = [
-        "QRCode", "Code128", "Code39", "Code93",
-        "EAN8", "EAN13", "UPCA", "UPCE", "ITF", "Codabar"
+        "QRCode", "Code128"
     ];
 
     window.zxingReady = (async () => {
@@ -597,7 +596,7 @@ class MultiFormatScanner {
         this.locked = false;
         this.track = null;
         this.lastDecodeTime = 0;
-        this.decodeInterval = 120; // ~8 decode attempts per second
+        this.decodeInterval = 60; // ~8 decode attempts per second
         this.busy = false;
         this._torchOn = false;
         this.loop = this.loop.bind(this);
@@ -646,6 +645,11 @@ class MultiFormatScanner {
         } else if (zoomWrap) {
             zoomWrap.style.display = "none";
         }
+        if (caps.zoom) {
+            const target = Math.min(caps.zoom.max, (caps.zoom.min || 1) * 2);
+            await this.track.applyConstraints({ advanced: [{ zoom: target }] }).catch(() => {});
+            if (zoomSlider) zoomSlider.value = target;
+        }
 
         const controls = document.getElementById("scanner-controls");
         if (controls) controls.style.display = "flex";
@@ -687,7 +691,7 @@ class MultiFormatScanner {
 
         this.busy = true;
         try {
-            const cropSize = Math.floor(Math.min(vw, vh) * 0.72);
+            const cropSize = Math.floor(Math.min(vw, vh) * 0.6);
             const sx = Math.floor((vw - cropSize) / 2);
             const sy = Math.floor((vh - cropSize) / 2);
             const targetSize = Math.min(cropSize, 640);
