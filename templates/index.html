@@ -531,9 +531,15 @@ async function onSerialScanned(text) {
 
         if (!res.ok || !res.accept) {
             alert(res.reason || res.error || "Rejected");
-            if (scanner) scanner.resume();
-            return;
-        }
+            
+                scanner.locked = false;
+            
+                setTimeout(() => {
+                    scanner.resume();
+                }, 1500);
+            
+                return;
+            }
 
         pendingReason = null;
         if (res.confirmMessage) {
