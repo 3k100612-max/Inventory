@@ -1,25 +1,32 @@
-import os, sys, html
+import os, sys, html, re
+from pathlib import Path
 from datetime import datetime
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session as flask_session, send_file
+from flask import (
+    Flask, render_template, request, jsonify, redirect,
+    url_for, flash, session as flask_session, send_file
+)
 from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from flask_login import (
+    LoginManager, UserMixin, login_user, login_required,
+    logout_user, current_user
+)
 from werkzeug.security import generate_password_hash, check_password_hash
-from sqlalchemy import text
-from sqlalchemy import func
-from io import BytesIO
-from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment
-from functools import wraps
-from openpyxl import load_workbook
 from werkzeug.utils import secure_filename
+from werkzeug.exceptions import RequestEntityTooLarge
+from sqlalchemy import text, func
+from io import BytesIO
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Font, PatternFill, Alignment
 
 app = Flask(__name__)
 
-# Set SECRET_KEY in your hosting environment.
-app.config["SECRET_KEY"] = os.environ.get(
-    "SECRET_KEY",
-    "replace-this-with-a-long-random-secret"
-)
+# SECRET_KEY MUST be provided by the hosting environment.
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY")
+if not app.config["SECRET_KEY"]:
+    raise RuntimeError(
+        "SECRET_KEY must be configured. "
+        "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(48))\""
+    )
 
 DB_USER = os.environ.get("DB_USER")
 DB_PASS = os.environ.get("DB_PASS")
@@ -27,17 +34,12 @@ DB_HOST = os.environ.get("DB_HOST")
 DB_NAME = os.environ.get("DB_NAME")
 
 if not all([DB_USER, DB_PASS, DB_HOST, DB_NAME]):
-    raise RuntimeError(
-        "DB_USER, DB_PASS, DB_HOST and DB_NAME must be configured."
-    )
+    raise RuntimeError("DB_USER, DB_PASS, DB_HOST and DB_NAME must be configured.")
 
 app.config["SQLALCHEMY_DATABASE_URI"] = (
     f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}"
 )
-
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-
-# Database connection pooling
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
     "pool_size": 10,
     "max_overflow": 20,
@@ -46,21 +48,33 @@ app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
     "pool_pre_ping": True,
 }
 
-# Do not allow a 2 GB request into memory.
-# Excel imports should normally be limited to a reasonable size.
+# ---- Uploads / limits ----
+BASE_DIR = Path(__file__).resolve().parent
+UPLOAD_FOLDER = BASE_DIR / "uploads"
+UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
+app.config["UPLOAD_FOLDER"] = str(UPLOAD_FOLDER)
+
+# Max upload size: 100 MB (matches the message shown in the UI)
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024
 
+# ---- Session cookie hardening ----
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = (
+    os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
+)
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-# --- SECURITY HEADERS (Content Security Policy) ---
+
+# --- SECURITY HEADERS ---
 @app.after_request
-def add_csp(resp):
+def add_security_headers(resp):
     resp.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' "
+        "script-src 'self' 'unsafe-inline' "
         "https://cdn.jsdelivr.net "
         "https://esm.sh; "
         "style-src 'self' 'unsafe-inline' "
@@ -75,12 +89,21 @@ def add_csp(resp):
         "font-src 'self' data: "
         "https://cdn.jsdelivr.net;"
     )
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["X-Frame-Options"] = "SAMEORIGIN"
+    resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return resp
 
 
+@app.errorhandler(RequestEntityTooLarge)
+def handle_file_too_large(error):
+    return jsonify({
+        "status": "error",
+        "message": "The uploaded file is larger than the 100 MB limit."
+    }), 413
+
 
 # ---------------- MODELS ----------------
-
 class User(UserMixin, db.Model):
     __tablename__ = 'user'
     id = db.Column(db.Integer, primary_key=True)
@@ -94,13 +117,7 @@ class InventoryScan(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
-    # Indexes make repeated barcode/serial searches much faster.
-    code = db.Column(
-        db.String(100),
-        nullable=False,
-        index=True
-    )
-
+    code = db.Column(db.String(100), nullable=False, index=True)
     imei = db.Column(db.String(100), index=True)
     mac_address = db.Column(db.String(100), index=True)
 
@@ -109,12 +126,7 @@ class InventoryScan(db.Model):
     status = db.Column(db.String(50), nullable=False, index=True)
     substatus = db.Column(db.String(50))
 
-    is_flagged = db.Column(
-        db.Boolean,
-        default=False,
-        nullable=False,
-        index=True
-    )
+    is_flagged = db.Column(db.Boolean, default=False, nullable=False, index=True)
 
     person_name = db.Column(db.String(100))
     employee_id = db.Column(db.String(50))
@@ -126,25 +138,22 @@ class InventoryScan(db.Model):
 
     notes = db.Column(db.Text)
 
-    # Store a filename or URL here, not a complete base64 image.
-    image_data = db.Column(db.String(255))
+    # Store a short filename or URL here, NOT a full base64 image.
+    image_data = db.Column(db.String(500))
 
     reason = db.Column(db.Text)
 
     timestamp = db.Column(
-        db.DateTime,
-        default=datetime.utcnow,
-        nullable=False,
-        index=True
+        db.DateTime, default=datetime.utcnow, nullable=False, index=True
     )
 
 
-
 @login_manager.user_loader
-def load_user(uid): return User.query.get(int(uid))
+def load_user(uid):
+    return User.query.get(int(uid))
 
 
-# ---------------- SCANNING RULES (the "brain") ----------------
+# ---------------- SCANNING RULES ----------------
 DEVICE_TYPES = ["Laptop", "Mobile", "Monitor", "Printer", "Other"]
 DEPARTMENTS  = ["IT", "FINANCE", "PROCUREMENT", "Other"]
 STATUSES     = ["In Stock", "Loaned", "In Use", "Repair", "Retired"]
@@ -152,12 +161,11 @@ STATUSES     = ["In Stock", "Loaned", "In Use", "Repair", "Retired"]
 SUBSTATUS_RULES = {
     "In Stock": ["New", "Active"],
     "Loaned": ["Service Unit"],
-    "In Use": ["Active"], 
+    "In Use": ["Active"],
     "Repair": ["Ongoing"],
     "Retired": ["Lost", "End of Life"]
 }
 
-# Which extra fields each status needs. Client just renders what Python says.
 STATUS_FIELD_RULES = {
     "In Stock": ["purchase", "end"],
     "Loaned":   ["email", "date"],
@@ -166,7 +174,6 @@ STATUS_FIELD_RULES = {
     "Retired":  [],
 }
 
-# Which identifiers Python will ask the client to scan, per device type.
 DEVICE_IDENTIFIER_RULES = {
     "Laptop":  ["mac"],
     "Mobile":  ["imei", "mac"],
@@ -174,6 +181,9 @@ DEVICE_IDENTIFIER_RULES = {
     "Printer": ["mac"],
     "Other":   [],
 }
+
+# Allowed characters in a scanned code. Loosen if your serials use spaces/symbols.
+CODE_PATTERN = re.compile(r"[A-Za-z0-9._:\-\/]+")
 
 
 # ---------------- INIT ----------------
@@ -187,17 +197,13 @@ def init_db():
                     'ALTER TABLE "user" '
                     'ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE'
                 ))
-
                 db.session.execute(text(
-                    'ALTER TABLE inventory_scan '
-                    'ADD COLUMN IF NOT EXISTS reason TEXT'
+                    'ALTER TABLE inventory_scan ADD COLUMN IF NOT EXISTS reason TEXT'
                 ))
-
                 db.session.execute(text(
                     'ALTER TABLE inventory_scan '
                     'ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN DEFAULT FALSE'
                 ))
-
                 db.session.execute(text(
                     'ALTER TABLE inventory_scan '
                     'ADD COLUMN IF NOT EXISTS substatus VARCHAR(50)'
@@ -206,27 +212,26 @@ def init_db():
                     CREATE INDEX IF NOT EXISTS ix_inventory_scan_code_timestamp
                     ON inventory_scan (code, timestamp DESC)
                 """))
-            
                 db.session.execute(text("""
                     CREATE INDEX IF NOT EXISTS ix_inventory_scan_code_status
                     ON inventory_scan (code, status)
                 """))
-            
                 db.session.execute(text("""
                     CREATE INDEX IF NOT EXISTS ix_inventory_scan_timestamp
                     ON inventory_scan (timestamp DESC)
                 """))
-
-            db.session.commit()
-
+                db.session.commit()
             except Exception as e:
                 db.session.rollback()
                 print(f"Database migration error: {e}", file=sys.stderr)
 
             if not User.query.filter_by(username='admin').first():
+                admin_password = os.environ.get("ADMIN_INITIAL_PASSWORD")
+                if not admin_password:
+                    raise RuntimeError("ADMIN_INITIAL_PASSWORD must be configured.")
                 db.session.add(User(
                     username='admin',
-                    password=generate_password_hash('P12345'),
+                    password=generate_password_hash(admin_password),
                     is_admin=True
                 ))
                 db.session.commit()
@@ -234,58 +239,71 @@ def init_db():
         except Exception as e:
             print(f"DB Init Error: {e}", file=sys.stderr)
 
+
 init_db()
 
 
 def sanitize(val, length=100):
-    if not val: return None
+    if not val:
+        return None
     return html.escape(str(val).strip()[:length])
 
+
 def sanitize_title(val, length=100):
-    """Like sanitize(), but normalizes casing for free-text 'Other' entries
-    to 'First letter capital, rest lowercase' — e.g. 'HARD DRIVE', 'hard drive',
-    and 'HaRd DrIvE' all become 'Hard drive'."""
     cleaned = sanitize(val, length)
     if not cleaned:
         return None
     return cleaned.capitalize()
 
+
 def parse_dt(s):
-    try: return datetime.strptime(s, '%Y-%m-%d').date() if s else None
-    except: return None
+    try:
+        return datetime.strptime(s, '%Y-%m-%d').date() if s else None
+    except Exception:
+        return None
 
 
 # ---------------- AUTH / PAGES ----------------
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        u = sanitize(request.form.get('username')); p = request.form.get('password')
+        u = sanitize(request.form.get('username'))
+        p = request.form.get('password')
         user = User.query.filter_by(username=u).first()
         if user and check_password_hash(user.password, p):
-            login_user(user); return redirect(url_for('index'))
+            login_user(user)
+            return redirect(url_for('index'))
         flash('Invalid username or password')
     return render_template('login.html')
+
 
 @app.route('/logout')
 @login_required
 def logout():
-    logout_user(); return redirect(url_for('login'))
+    logout_user()
+    return redirect(url_for('login'))
+
 
 @app.route('/')
 @login_required
 def index():
-    scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).limit(50).all()
+    scans = InventoryScan.query.order_by(
+        InventoryScan.timestamp.desc()
+    ).limit(50).all()
     repair_counts = dict(
         db.session.query(InventoryScan.code, func.count(InventoryScan.id))
-        .filter(InventoryScan.status == 'Repair').group_by(InventoryScan.code).all()
+        .filter(InventoryScan.status == 'Repair')
+        .group_by(InventoryScan.code).all()
     )
     flagged_codes = {c for c, n in repair_counts.items() if n >= 3}
-    return render_template('index.html', scans=scans, user=current_user,
-                           device_types=DEVICE_TYPES, departments=DEPARTMENTS, statuses=STATUSES,
-                           flagged_codes=flagged_codes)
+    return render_template(
+        'index.html', scans=scans, user=current_user,
+        device_types=DEVICE_TYPES, departments=DEPARTMENTS,
+        statuses=STATUSES, flagged_codes=flagged_codes
+    )
 
 
-# ---------------- SESSION: Python validates + owns config ----------------
+# ---------------- SESSION ----------------
 @app.route('/session/start', methods=['POST'])
 @login_required
 def session_start():
@@ -293,49 +311,31 @@ def session_start():
 
     user = sanitize(d.get('user'))
     emp = sanitize(d.get('empId'))
-
     if not user or not emp:
-        return jsonify({
-            "ok": False,
-            "error": "Employee Name and ID are mandatory."
-        }), 400
+        return jsonify({"ok": False, "error": "Employee Name and ID are mandatory."}), 400
 
     device = sanitize(d.get('device'))
-
     if device == 'Other':
         device = sanitize_title(d.get('otherDevice')) or 'Other'
 
     dept = sanitize(d.get('dept'))
-
     if dept == 'Other':
         dept = sanitize_title(d.get('otherDept')) or 'Other'
 
     status = sanitize(d.get('status'))
-
     if status not in STATUSES:
-        return jsonify({
-            "ok": False,
-            "error": "Invalid status."
-        }), 400
+        return jsonify({"ok": False, "error": "Invalid status."}), 400
 
-    # Determine and validate substatus
     valid_substatuses = SUBSTATUS_RULES.get(status, [])
 
     if status == "Loaned":
-        # Loaned always receives this substatus
         substatus = "Service Unit"
-
     elif status == "Repair":
-        # Repair always receives this substatus
         substatus = "Ongoing"
-
-    elif status == "In Use":   
-        substatus = "Active"                 
-
+    elif status == "In Use":
+        substatus = "Active"
     elif valid_substatuses:
-        # In Stock and Retired require user selection
         substatus = sanitize(d.get('substatus'))
-
         if substatus not in valid_substatuses:
             return jsonify({
                 "ok": False,
@@ -344,14 +344,11 @@ def session_start():
                     f"Choose one of: {', '.join(valid_substatuses)}."
                 )
             }), 400
-
     else:
-        # In Use does not have a substatus
         substatus = None
 
     base = device if device in DEVICE_IDENTIFIER_RULES else 'Other'
 
-    # Store the authoritative session configuration server-side
     flask_session['scan_cfg'] = {
         "user": user,
         "empId": emp,
@@ -365,7 +362,8 @@ def session_start():
         "purchase": sanitize(d.get('purchase')),
         "end": sanitize(d.get('end')),
         "notes": sanitize(d.get('notes'), 1000),
-        "image_data": d.get('image_data'),
+        # Do NOT store large base64 images in the session/cookie.
+        "image_data": None,
         "identifiers": DEVICE_IDENTIFIER_RULES.get(base, [])
     }
 
@@ -385,7 +383,7 @@ def session_start():
     })
 
 
-# ---------------- SCAN CHECK: Python decides accept/reject/next ----------------
+# ---------------- SCAN CHECK ----------------
 @app.route('/scan/check', methods=['POST'])
 @login_required
 def scan_check():
@@ -393,9 +391,12 @@ def scan_check():
     if not cfg:
         return jsonify({"ok": False, "error": "No active session. Start a session first."}), 400
 
-    code = sanitize((request.get_json() or {}).get('code'))
+    code = sanitize((request.get_json() or {}).get('code'), length=100)
     if not code:
         return jsonify({"ok": False, "accept": False, "reason": "Empty code"}), 200
+
+    if not CODE_PATTERN.fullmatch(code):
+        return jsonify({"ok": False, "accept": False, "reason": "Invalid barcode characters."}), 200
 
     new_status = cfg.get("status")
     last = InventoryScan.query.filter_by(code=code).order_by(
@@ -419,31 +420,25 @@ def scan_check():
             result["confirmMessage"] = (
                 f"Serial '{code}' was already scanned (In Stock). Save this record again?"
             )
-
         elif current == "Loaned" and new_status == "In Use":
             result["confirmMessage"] = (
                 f"Serial '{code}' is currently Loaned and has not been returned. "
                 f"It will be updated to In Use. Continue?"
             )
-
         elif current == "In Use" and new_status == "In Use":
             result["confirmMessage"] = (
                 f"Serial '{code}' is already In Use. Save this record again?"
             )
-
         elif current == "Repair":
             repair_count = InventoryScan.query.filter_by(
-                code=code,
-                status="Repair"
+                code=code, status="Repair"
             ).count()
-
             if repair_count >= 2:
                 result["flag"] = "red"
                 result["confirmMessage"] = (
-                    f"⚠️ Serial '{code}' will now be tagged as FLAGGED because "
+                    f"Serial '{code}' will now be tagged as FLAGGED because "
                     f"this is Repair #{repair_count + 1}. Save anyway?"
                 )
-
         elif current == "Retired" and new_status == "In Use":
             result["requireReason"] = True
             result["confirmMessage"] = (
@@ -453,7 +448,7 @@ def scan_check():
     return jsonify(result)
 
 
-# ---------------- SAVE: uses server-side session, not client claims ----------------
+# ---------------- SAVE ----------------
 @app.route('/scanned', methods=['POST'])
 @login_required
 def scanned():
@@ -463,7 +458,6 @@ def scanned():
 
     d = request.get_json() or {}
     code = sanitize(d.get('code'))
-
     if not code:
         return jsonify({"status": "error", "message": "Serial is required."}), 400
 
@@ -479,16 +473,11 @@ def scanned():
             "message": "A reason is required to reactivate a Retired unit."
         }), 400
 
-    # Automatically determine if this serial should be flagged
     is_flagged = False
-
     if cfg["status"] == "Repair":
         repair_count = InventoryScan.query.filter_by(
-            code=code,
-            status="Repair"
+            code=code, status="Repair"
         ).count()
-
-        # This save becomes the 3rd repair
         if repair_count + 1 >= 3:
             is_flagged = True
 
@@ -512,24 +501,16 @@ def scanned():
             reason=reason,
             is_flagged=is_flagged
         )
-
         db.session.add(s)
         db.session.commit()
-
-        return jsonify({
-            "status": "success",
-            "id": s.id,
-            "is_flagged": is_flagged
-        })
+        return jsonify({"status": "success", "id": s.id, "is_flagged": is_flagged})
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
-        
-# ---------------- EDIT: fetch single record ----------------
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ---------------- EDIT: fetch ----------------
 @app.route('/scan/<int:scan_id>', methods=['GET'])
 @login_required
 def get_scan(scan_id):
@@ -560,7 +541,7 @@ def get_scan(scan_id):
     })
 
 
-# ---------------- EDIT: update single record ----------------
+# ---------------- EDIT: update ----------------
 @app.route('/scan/<int:scan_id>/edit', methods=['POST'])
 @login_required
 def edit_scan(scan_id):
@@ -584,8 +565,8 @@ def edit_scan(scan_id):
         substatus_value = "Service Unit"
     elif status_value == "Repair":
         substatus_value = "Ongoing"
-    elif status_value == "In Use":            # NEW
-        substatus_value = "Active" 
+    elif status_value == "In Use":
+        substatus_value = "Active"
     elif valid_substatuses:
         if substatus_value not in valid_substatuses:
             return jsonify({
@@ -629,81 +610,70 @@ def edit_scan(scan_id):
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
 
+
 # ---------------- ADMIN ----------------
 @app.route('/admin/users', methods=['GET', 'POST'])
 @login_required
 def manage_users():
-    if not current_user.is_admin: return redirect(url_for('index'))
+    if not current_user.is_admin:
+        return redirect(url_for('index'))
     if request.method == 'POST':
-        u = sanitize(request.form.get('username')); p = request.form.get('password')
+        u = sanitize(request.form.get('username'))
+        p = request.form.get('password')
         a = bool(request.form.get('is_admin'))
-        if User.query.filter_by(username=u).first(): flash("User exists!")
+        if User.query.filter_by(username=u).first():
+            flash("User exists!")
         else:
             db.session.add(User(username=u, password=generate_password_hash(p), is_admin=a))
-            db.session.commit(); flash("User created.")
+            db.session.commit()
+            flash("User created.")
     return render_template('admin_users.html', users=User.query.all())
+
 
 @app.route('/admin/users/delete/<int:user_id>')
 @login_required
 def delete_user(user_id):
-    if not current_user.is_admin: return redirect(url_for('index'))
+    if not current_user.is_admin:
+        return redirect(url_for('index'))
     u = User.query.get(user_id)
     if u and u.id != current_user.id:
-        db.session.delete(u); db.session.commit()
+        db.session.delete(u)
+        db.session.commit()
     return redirect(url_for('manage_users'))
+
 
 @app.route('/delete', methods=['POST'])
 @login_required
 def delete_scans():
     if not current_user.is_admin:
         return jsonify({"status": "error", "message": "Admin only"}), 403
-    ids = request.json.get('ids', [])
+    ids = (request.get_json() or {}).get('ids', [])
+    if not ids:
+        return jsonify({"status": "error", "message": "No ids provided."}), 400
     InventoryScan.query.filter(InventoryScan.id.in_(ids)).delete(synchronize_session=False)
     db.session.commit()
     return jsonify({"status": "success"})
 
 
-# ---------------- EXPORT TO EXCEL ----------------
+# ---------------- EXPORT ----------------
 @app.route('/export/excel')
 @login_required
 def export_excel():
-    scans = InventoryScan.query.order_by(
-        InventoryScan.timestamp.desc()
-    ).all()
+    scans = InventoryScan.query.order_by(InventoryScan.timestamp.desc()).all()
 
     wb = Workbook()
     ws = wb.active
     ws.title = "Inventory"
 
     headers = [
-        "Timestamp",
-        "Serial/Code",
-        "Device Type",
-        "IMEI",
-        "MAC Address",
-        "Department",
-        "Status",
-        "Substatus",
-        "Employee Name",
-        "Employee ID",
-        "Email",
-        "Purchase Date",
-        "Return Date",
-        "End of Cycle",
-        "Reason",
-        "Notes"
+        "Timestamp", "Serial/Code", "Device Type", "IMEI", "MAC Address",
+        "Department", "Status", "Substatus", "Employee Name", "Employee ID",
+        "Email", "Purchase Date", "Return Date", "End of Cycle", "Reason", "Notes"
     ]
-
     ws.append(headers)
 
-    header_fill = PatternFill(
-        start_color="0D6EFD",
-        end_color="0D6EFD",
-        fill_type="solid"
-    )
-
+    header_fill = PatternFill(start_color="0D6EFD", end_color="0D6EFD", fill_type="solid")
     header_font = Font(color="FFFFFF", bold=True)
-
     for col_num, _ in enumerate(headers, start=1):
         cell = ws.cell(row=1, column=col_num)
         cell.fill = header_fill
@@ -712,45 +682,23 @@ def export_excel():
 
     for s in scans:
         ws.append([
-            s.timestamp.strftime('%Y-%m-%d %H:%M:%S')
-            if s.timestamp else "",
-
-            s.code,
-            s.device_type,
-            s.imei or "",
-            s.mac_address or "",
-            s.department or "",
-            s.status,
-            s.substatus or "",
-            s.person_name or "",
-            s.employee_id or "",
-            s.email or "",
-
-            s.purchase_date.strftime('%Y-%m-%d')
-            if s.purchase_date else "",
-
-            s.return_date.strftime('%Y-%m-%d')
-            if s.return_date else "",
-
-            s.end_of_cycle.strftime('%Y-%m-%d')
-            if s.end_of_cycle else "",
-
-            s.reason or "",
-            s.notes or ""
+            s.timestamp.strftime('%Y-%m-%d %H:%M:%S') if s.timestamp else "",
+            s.code, s.device_type, s.imei or "", s.mac_address or "",
+            s.department or "", s.status, s.substatus or "",
+            s.person_name or "", s.employee_id or "", s.email or "",
+            s.purchase_date.strftime('%Y-%m-%d') if s.purchase_date else "",
+            s.return_date.strftime('%Y-%m-%d') if s.return_date else "",
+            s.end_of_cycle.strftime('%Y-%m-%d') if s.end_of_cycle else "",
+            s.reason or "", s.notes or ""
         ])
 
     for col_cells in ws.columns:
         length = max(
-            len(str(cell.value))
-            if cell.value is not None else 0
+            (len(str(cell.value)) if cell.value is not None else 0)
             for cell in col_cells
         )
-
         col_letter = col_cells[0].column_letter
-        ws.column_dimensions[col_letter].width = min(
-            max(length + 2, 10),
-            40
-        )
+        ws.column_dimensions[col_letter].width = min(max(length + 2, 10), 40)
 
     ws.freeze_panes = "A2"
 
@@ -758,128 +706,79 @@ def export_excel():
     wb.save(buf)
     buf.seek(0)
 
-    filename = (
-        f"inventory_export_"
-        f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    )
-
+    filename = f"inventory_export_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
     return send_file(
-        buf,
-        as_attachment=True,
-        download_name=filename,
-        mimetype=(
-            "application/vnd.openxmlformats-officedocument."
-            "spreadsheetml.sheet"
-        )
+        buf, as_attachment=True, download_name=filename,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
 
-# ---------------- IMPORT TO EXCEL ----------------
+# ---------------- IMPORT ----------------
 @app.route('/import/excel', methods=['POST'])
 @login_required
 def import_excel():
-
     if 'file' not in request.files:
-        return jsonify({
-            "status": "error",
-            "message": "No file selected."
-        }), 400
+        return jsonify({"status": "error", "message": "No file selected."}), 400
 
     file = request.files['file']
-
-    if file.filename == '':
-        return jsonify({
-            "status": "error",
-            "message": "Empty filename."
-        }), 400
+    if not file or not file.filename:
+        return jsonify({"status": "error", "message": "Empty filename."}), 400
 
     filename = secure_filename(file.filename)
-
     if not filename.lower().endswith('.xlsx'):
-        return jsonify({
-            "status": "error",
-            "message": "Only .xlsx files are allowed."
-        }), 400
+        return jsonify({"status": "error", "message": "Only .xlsx files are allowed."}), 400
 
-    filepath = os.path.join(
-        app.config['UPLOAD_FOLDER'],
-        filename
-    )
-
+    unique_filename = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}_{filename}"
+    filepath = os.path.join(app.config["UPLOAD_FOLDER"], unique_filename)
     file.save(filepath)
 
     try:
-        wb = load_workbook(filepath)
+        wb = load_workbook(filepath, read_only=True, data_only=True)
         ws = wb.active
 
         imported = 0
         skipped = 0
         errors = []
 
-        for row_number, row in enumerate(
-            ws.iter_rows(min_row=2, values_only=True),
-            start=2
-        ):
+        for row_number, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
             try:
-                timestamp = row[0]
-                serial = str(row[1]).strip() if row[1] else ""
-
-                if not serial:
+                if row is None or len(row) < 16:
                     skipped += 1
-                    errors.append(
-                        f"Row {row_number}: Serial Number is empty."
-                    )
+                    errors.append(f"Row {row_number}: Not enough columns.")
                     continue
 
-                status_value = (
-                    str(row[6]).strip()
-                    if row[6]
-                    else "In Stock"
-                )
+                timestamp = row[0]
+                serial = str(row[1]).strip() if row[1] else ""
+                if not serial:
+                    skipped += 1
+                    errors.append(f"Row {row_number}: Serial Number is empty.")
+                    continue
 
-                substatus_value = (
-                    str(row[7]).strip()
-                    if row[7]
-                    else None
-                )
+                status_value = str(row[6]).strip() if row[6] else "In Stock"
+                substatus_value = str(row[7]).strip() if row[7] else None
 
                 if status_value not in STATUSES:
                     skipped += 1
-                    errors.append(
-                        f"Row {row_number}: Invalid status "
-                        f"'{status_value}'."
-                    )
+                    errors.append(f"Row {row_number}: Invalid status '{status_value}'.")
                     continue
 
-                valid_substatuses = SUBSTATUS_RULES.get(
-                    status_value,
-                    []
-                )
+                valid_substatuses = SUBSTATUS_RULES.get(status_value, [])
 
                 if status_value == "Loaned":
-                    # Automatically assign Loaned substatus
                     substatus_value = "Service Unit"
-
                 elif status_value == "Repair":
-                    # Automatically assign Repair substatus
                     substatus_value = "Ongoing"
-
-                elif status_value == "In Use":            # NEW
+                elif status_value == "In Use":
                     substatus_value = "Active"
-
                 elif valid_substatuses:
-                    # In Stock and Retired require validation
                     if substatus_value not in valid_substatuses:
                         skipped += 1
                         errors.append(
-                            f"Row {row_number}: Invalid or missing "
-                            f"substatus '{substatus_value}' for "
-                            f"status '{status_value}'."
+                            f"Row {row_number}: Invalid or missing substatus "
+                            f"'{substatus_value}' for status '{status_value}'."
                         )
                         continue
-
                 else:
-                    # In Use has no substatus
                     substatus_value = None
 
                 scan = InventoryScan(
@@ -893,29 +792,22 @@ def import_excel():
                     person_name=row[8],
                     employee_id=row[9],
                     email=row[10],
-                    purchase_date=row[11],
-                    return_date=row[12],
-                    end_of_cycle=row[13],
+                    purchase_date=parse_dt(str(row[11])[:10]) if row[11] else None,
+                    return_date=parse_dt(str(row[12])[:10]) if row[12] else None,
+                    end_of_cycle=parse_dt(str(row[13])[:10]) if row[13] else None,
                     reason=row[14],
                     notes=row[15],
-                    timestamp=(
-                        timestamp
-                        if isinstance(timestamp, datetime)
-                        else datetime.utcnow()
-                    )
+                    timestamp=(timestamp if isinstance(timestamp, datetime) else datetime.utcnow())
                 )
-
                 db.session.add(scan)
                 imported += 1
 
             except Exception as e:
                 skipped += 1
-                errors.append(
-                    f"Row {row_number}: {str(e)}"
-                )
+                errors.append(f"Row {row_number}: {str(e)}")
 
         db.session.commit()
-
+        wb.close()
         return jsonify({
             "status": "success",
             "imported": imported,
@@ -925,11 +817,7 @@ def import_excel():
 
     except Exception as e:
         db.session.rollback()
-
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
     finally:
         if os.path.exists(filepath):
