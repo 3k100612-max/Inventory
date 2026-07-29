@@ -3,61 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta
-    http-equiv="Content-Security-Policy"
-    content="
-        default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:;
-        script-src 'self' 'unsafe-inline' 'unsafe-eval'
-            https://cdn.jsdelivr.net
-            https://esm.sh;
-        style-src 'self' 'unsafe-inline'
-            https://cdn.jsdelivr.net;
-        img-src 'self' data: blob:;
-        font-src 'self' data: https://cdn.jsdelivr.net;
-        worker-src 'self' blob:;
-        connect-src 'self'
-            https://esm.sh
-            https://cdn.jsdelivr.net
-            https://fastly.jsdelivr.net;
-    "
->
     <title>Inventory Control Pro</title>
-    <!-- Bootstrap 5 CSS -->
+    <!-- CSP is set by the Flask response header; no duplicate meta CSP here. -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background-color: #f4f7f6; padding: 20px; font-family: 'Segoe UI', sans-serif; }
         .card { border: none; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); margin-bottom: 20px; }
-
-        /* Scanner Container Fixes */
-        #reader {
-            width: 100%;
-            min-height: 300px;
-            background: #000;
-            border-radius: 15px;
-            overflow: hidden;
-            position: relative;
-        }
-        #reader video {
-            width: 100% !important;
-            height: auto !important;
-            border-radius: 15px;
-            display: block;
-        }
+        #reader { width: 100%; min-height: 300px; background: #000; border-radius: 15px; overflow: hidden; position: relative; }
+        #reader video { width: 100% !important; height: auto !important; border-radius: 15px; display: block; }
         #scan-box-overlay {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 55%;
-            aspect-ratio: 1 / 1;
-            max-width: 280px;
-            border: 3px solid rgba(13,110,253,0.9);
-            border-radius: 12px;
-            pointer-events: none;
-            box-shadow: 0 0 0 9999px rgba(0,0,0,0.35);
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 55%; aspect-ratio: 1 / 1; max-width: 280px;
+            border: 3px solid rgba(13,110,253,0.9); border-radius: 12px;
+            pointer-events: none; box-shadow: 0 0 0 9999px rgba(0,0,0,0.35);
         }
         #scanner-controls { display: none; }
-
         .session-info-bar { display: none; background: #fff; border-left: 6px solid #0d6efd; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
         .active-scan-field { border: 3px solid #0d6efd !important; background-color: #e7f1ff !important; }
         .status-badge { font-size: 0.7rem; text-transform: uppercase; font-weight: bold; }
@@ -67,52 +27,25 @@
 </head>
 <body>
 
-<!-- Success Feedback Toast -->
-<div id="save_toast" class="alert alert-success shadow">✅ Record Saved Successfully!</div>
+<div id="save_toast" class="alert alert-success shadow">Record Saved Successfully!</div>
 
 <div class="container">
-    <!-- HEADER -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h2 class="fw-bold text-dark mb-0">Inventory Control</h2>
             <span class="small text-muted">Logged in as: <strong>{{ user.username }}</strong></span>
         </div>
-       <div class="d-flex gap-2 align-items-center">
-
-    {% if user.is_admin %}
-    <a href="/admin/users" class="btn btn-primary btn-sm fw-bold">
-        👤 Manage Users
-    </a>
-    {% endif %}
-
-    <!-- Import Excel -->
-    <button
-        class="btn btn-warning btn-sm fw-bold"
-        data-bs-toggle="modal"
-        data-bs-target="#importModal">
-        📤 Import Excel
-    </button>
-
-    <!-- Export -->
-    <a href="/export/excel"
-       class="btn btn-success btn-sm fw-bold">
-        📥 Export Excel
-    </a>
-
-    <a href="/logout"
-       class="btn btn-outline-danger btn-sm fw-bold">
-        Logout
-    </a>
-
-    <button class="btn btn-outline-secondary btn-sm"
-            onclick="location.reload()">
-        🔄 Sync
-    </button>
-
-</div>
+        <div class="d-flex gap-2 align-items-center">
+            {% if user.is_admin %}
+            <a href="/admin/users" class="btn btn-primary btn-sm fw-bold">Manage Users</a>
+            {% endif %}
+            <button class="btn btn-warning btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#importModal">Import Excel</button>
+            <a href="/export/excel" class="btn btn-success btn-sm fw-bold">Export Excel</a>
+            <a href="/logout" class="btn btn-outline-danger btn-sm fw-bold">Logout</a>
+            <button class="btn btn-outline-secondary btn-sm" onclick="location.reload()">Sync</button>
+        </div>
     </div>
 
-    <!-- ACTIVE SESSION BAR -->
     <div id="session_info" class="session-info-bar card shadow-sm">
         <div class="row align-items-center">
             <div class="col-md-9">
@@ -130,7 +63,6 @@
         </div>
     </div>
 
-    <!-- SCANNER VIEW -->
     <div id="scanner_section" style="display:none;">
         <div class="card p-3">
             <div id="reader">
@@ -140,19 +72,17 @@
             </div>
 
             <div id="scanner-controls" class="d-flex align-items-center gap-3 mt-2">
-                <button type="button" class="btn btn-sm btn-outline-dark" id="btn_torch" onclick="toggleTorch()" style="display:none;">🔦 Torch</button>
+                <button type="button" class="btn btn-sm btn-outline-dark" id="btn_torch" onclick="toggleTorch()" style="display:none;">Torch</button>
                 <div class="flex-grow-1 d-flex align-items-center gap-2" id="zoom-wrap" style="display:none;">
                     <span class="small fw-bold">Zoom</span>
                     <input type="range" id="zoom_slider" class="form-range" min="1" max="1" step="0.1" value="1" oninput="setZoomLevel(this.value)">
                 </div>
-                <span class="small text-muted" id="scan_engine_status">Loading scanner engine…</span>
+                <span class="small text-muted" id="scan_engine_status">Loading scanner engine...</span>
             </div>
 
             <div class="d-flex justify-content-end mt-2">
                 <button type="button" class="btn btn-sm btn-outline-primary fw-bold" id="btn_photo_upload"
-                        onclick="document.getElementById('photo_upload_input').click()">
-                    📷 Take Photo Instead
-                </button>
+                        onclick="document.getElementById('photo_upload_input').click()">Take Photo Instead</button>
                 <input type="file" id="photo_upload_input" accept="image/*" capture="environment"
                        style="display:none" onchange="handlePhotoUpload(event)">
             </div>
@@ -175,11 +105,10 @@
         </div>
     </div>
 
-    <!-- START SCREEN -->
     <div id="start_section" class="text-center py-5">
         <div class="card p-5 border-0 shadow-sm">
             <div class="mb-4">
-                <div class="display-1 text-primary">📦</div>
+                <div class="display-1 text-primary">Inventory</div>
                 <h3 class="mt-3 fw-bold">Ready to Start?</h3>
                 <p class="text-muted">Configure your session parameters to begin scanning.</p>
             </div>
@@ -187,81 +116,46 @@
         </div>
     </div>
 
-    <!-- HISTORY LOG -->
     <div class="card p-4">
         <h5 class="mb-3 fw-bold">Recent Activity</h5>
         <div class="table-responsive">
             <table class="table table-hover align-middle">
                 <thead class="table-light">
                     <tr>
-                        <th>Time</th>
-                        <th>Item Info</th>
-                        <th>Status</th>
-                        <th>Substatus</th>
-                        <th>Employee</th>
-                        <th>Action</th>
+                        <th>Time</th><th>Item Info</th><th>Status</th>
+                        <th>Substatus</th><th>Employee</th><th>Action</th>
                     </tr>
                 </thead>
                 <tbody id="history_body">
                     {% for s in scans %}
                     <tr id="row-{{ s.id }}">
-                        <td class="small text-muted">
-                            {{ s.timestamp.strftime('%H:%M') }}
-                        </td>
-                    
+                        <td class="small text-muted">{{ s.timestamp.strftime('%H:%M') }}</td>
                         <td>
                             <div class="fw-bold">
                                 {{ s.code }}
-                    
                                 {% if s.code in flagged_codes %}
-                                    <span
-                                        class="text-danger"
-                                        title="Tagged for repair 3+ times">
-                                        🚩
-                                    </span>
+                                    <span class="text-danger" title="Tagged for repair 3+ times">[FLAGGED]</span>
                                 {% endif %}
                             </div>
-                    
-                            <div class="small text-muted">
-                                {{ s.device_type }}
-                            </div>
+                            <div class="small text-muted">{{ s.device_type }}</div>
                         </td>
-                    
                         <td>
-                            <span class="badge rounded-pill
-                                {{ 'bg-danger' if s.code in flagged_codes
-                                   else 'bg-secondary' }}
-                                status-badge">
+                            <span class="badge rounded-pill {{ 'bg-danger' if s.code in flagged_codes else 'bg-secondary' }} status-badge">
                                 {{ s.status }}
                             </span>
                         </td>
-                    
                         <td>
                             {% if s.substatus %}
-                                <span class="badge bg-light text-dark border">
-                                    {{ s.substatus }}
-                                </span>
+                                <span class="badge bg-light text-dark border">{{ s.substatus }}</span>
                             {% else %}
                                 <span class="text-muted">-</span>
                             {% endif %}
                         </td>
-                    
-                        <td>
-                            {{ s.person_name }} ({{ s.department }})
-                        </td>
-                    
+                        <td>{{ s.person_name }} ({{ s.department }})</td>
                         <td>
                             {% if user.is_admin %}
-                                <button
-                                    class="btn btn-sm text-primary"
-                                    onclick="openEditModal({{ s.id }})">
-                                    ✏️
-                                </button>
-                                <button
-                                    class="btn btn-sm text-danger"
-                                    onclick="deleteSingle({{ s.id }})">
-                                    🗑️
-                                </button>
+                                <button class="btn btn-sm text-primary" onclick="openEditModal({{ s.id }})">Edit</button>
+                                <button class="btn btn-sm text-danger" onclick="deleteSingle({{ s.id }})">Delete</button>
                             {% else %}
                                 <span class="text-muted small">-</span>
                             {% endif %}
@@ -283,7 +177,6 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-4">
-                <!-- Employee Info -->
                 <div class="row bg-light p-3 rounded mb-4 border">
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold mandatory-label">Employee Name</label>
@@ -294,8 +187,6 @@
                         <input type="text" id="m_emp_id" class="form-control" placeholder="ID Number">
                     </div>
                 </div>
-
-                <!-- Device & Dept -->
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold mandatory-label">Device Type</label>
@@ -319,8 +210,6 @@
                         <input type="text" id="m_other_dept" class="form-control mt-2 border-primary" style="display:none;" placeholder="Specify Dept">
                     </div>
                 </div>
-
-                <!-- Scan Mode -->
                 <div class="mb-3">
                     <label class="form-label fw-bold mandatory-label">Scanning Mode</label>
                     <div class="btn-group w-100" role="group">
@@ -330,8 +219,6 @@
                         <label class="btn btn-outline-primary" for="mode_multi">Multiple (Continuous)</label>
                     </div>
                 </div>
-
-                <!-- Status -->
                 <div class="mb-4">
                     <label class="form-label fw-bold mandatory-label">Status</label>
                     <div class="btn-group w-100 flex-wrap" role="group">
@@ -347,23 +234,13 @@
                         <label class="btn btn-outline-secondary" for="st5">Retired</label>
                     </div>
                 </div>
-
-                <!-- Substatus -->
                 <div class="mb-4" id="substatus_group" style="display:none;">
-                    <label class="form-label fw-bold mandatory-label">
-                        Substatus
-                    </label>
-                
+                    <label class="form-label fw-bold mandatory-label">Substatus</label>
                     <select id="m_substatus" class="form-select">
                         <option value="">Select substatus</option>
                     </select>
-                
-                    <div class="form-text">
-                        Select the condition of this asset.
-                    </div>
+                    <div class="form-text">Select the condition of this asset.</div>
                 </div>
-
-                <!-- Dynamic Fields -->
                 <div id="dynamic_fields">
                     <div id="group_stock" class="row" style="display:none;">
                         <div class="col-md-6 mb-3"><label class="form-label small fw-bold">Purchase Date</label><input type="date" id="m_purchase" class="form-control"></div>
@@ -412,96 +289,51 @@
             </div>
             <div class="modal-body p-4">
                 <input type="hidden" id="e_id">
-
                 <div class="row bg-light p-3 rounded mb-4 border">
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label fw-bold">Serial / Code</label>
-                        <input type="text" id="e_code" class="form-control">
-                    </div>
+                    <div class="col-md-6 mb-3"><label class="form-label fw-bold">Serial / Code</label><input type="text" id="e_code" class="form-control"></div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold">Device Type</label>
                         <select id="e_device" class="form-select">
-                            <option value="Laptop">Laptop</option>
-                            <option value="Mobile">Mobile</option>
-                            <option value="Monitor">Monitor</option>
-                            <option value="Printer">Printer</option>
+                            <option value="Laptop">Laptop</option><option value="Mobile">Mobile</option>
+                            <option value="Monitor">Monitor</option><option value="Printer">Printer</option>
                             <option value="Other">Other</option>
                         </select>
                     </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label fw-bold">Employee Name</label>
-                        <input type="text" id="e_person_name" class="form-control">
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label fw-bold">Employee ID</label>
-                        <input type="text" id="e_employee_id" class="form-control">
-                    </div>
+                    <div class="col-md-6 mb-3"><label class="form-label fw-bold">Employee Name</label><input type="text" id="e_person_name" class="form-control"></div>
+                    <div class="col-md-6 mb-3"><label class="form-label fw-bold">Employee ID</label><input type="text" id="e_employee_id" class="form-control"></div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold">Department</label>
                         <select id="e_department" class="form-select">
-                            <option value="IT">IT</option>
-                            <option value="FINANCE">FINANCE</option>
-                            <option value="PROCUREMENT">PROCUREMENT</option>
-                            <option value="Other">Other</option>
+                            <option value="IT">IT</option><option value="FINANCE">FINANCE</option>
+                            <option value="PROCUREMENT">PROCUREMENT</option><option value="Other">Other</option>
                         </select>
                     </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label fw-bold">IMEI</label>
-                        <input type="text" id="e_imei" class="form-control">
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label fw-bold">MAC Address</label>
-                        <input type="text" id="e_mac_address" class="form-control">
-                    </div>
+                    <div class="col-md-6 mb-3"><label class="form-label fw-bold">IMEI</label><input type="text" id="e_imei" class="form-control"></div>
+                    <div class="col-md-6 mb-3"><label class="form-label fw-bold">MAC Address</label><input type="text" id="e_mac_address" class="form-control"></div>
                 </div>
-
                 <div class="mb-3">
                     <label class="form-label fw-bold">Status</label>
                     <select id="e_status" class="form-select" onchange="updateEditSubstatusOptions()">
-                        <option value="In Stock">In Stock</option>
-                        <option value="Loaned">Loaned</option>
-                        <option value="In Use">In Use</option>
-                        <option value="Repair">Repair</option>
+                        <option value="In Stock">In Stock</option><option value="Loaned">Loaned</option>
+                        <option value="In Use">In Use</option><option value="Repair">Repair</option>
                         <option value="Retired">Retired</option>
                     </select>
                 </div>
-
                 <div class="mb-3" id="e_substatus_group" style="display:none;">
                     <label class="form-label fw-bold">Substatus</label>
-                    <select id="e_substatus" class="form-select">
-                        <option value="">Select substatus</option>
-                    </select>
+                    <select id="e_substatus" class="form-select"><option value="">Select substatus</option></select>
                 </div>
-
                 <div class="mb-3" id="e_reason_group" style="display:none;">
                     <label class="form-label fw-bold">Reactivation Reason</label>
                     <input type="text" id="e_reason" class="form-control" placeholder="Why is this Retired unit being reactivated?">
                 </div>
-
                 <div class="row">
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label small fw-bold">Purchase Date</label>
-                        <input type="date" id="e_purchase_date" class="form-control">
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label small fw-bold">Return Date</label>
-                        <input type="date" id="e_return_date" class="form-control">
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label small fw-bold">End Cycle</label>
-                        <input type="date" id="e_end_of_cycle" class="form-control">
-                    </div>
+                    <div class="col-md-4 mb-3"><label class="form-label small fw-bold">Purchase Date</label><input type="date" id="e_purchase_date" class="form-control"></div>
+                    <div class="col-md-4 mb-3"><label class="form-label small fw-bold">Return Date</label><input type="date" id="e_return_date" class="form-control"></div>
+                    <div class="col-md-4 mb-3"><label class="form-label small fw-bold">End Cycle</label><input type="date" id="e_end_of_cycle" class="form-control"></div>
                 </div>
-
-                <div class="mb-3">
-                    <label class="form-label small fw-bold">Email</label>
-                    <input type="email" id="e_email" class="form-control">
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label small fw-bold">Notes</label>
-                    <textarea id="e_notes" class="form-control" rows="2"></textarea>
-                </div>
+                <div class="mb-3"><label class="form-label small fw-bold">Email</label><input type="email" id="e_email" class="form-control"></div>
+                <div class="mb-3"><label class="form-label small fw-bold">Notes</label><textarea id="e_notes" class="form-control" rows="2"></textarea></div>
             </div>
             <div class="modal-footer border-0">
                 <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -511,9 +343,7 @@
     </div>
 </div>
 
-
-    
-<!-- CONFIRM MODAL (non-blocking replacement for confirm()/prompt()) -->
+<!-- CONFIRM MODAL -->
 <div class="modal fade" id="confirmModal" data-bs-backdrop="static" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg">
@@ -528,134 +358,77 @@
             </div>
         </div>
     </div>
-</div>    
-<!-- Import Excel Modal -->
+</div>
+
+<!-- IMPORT MODAL -->
 <div class="modal fade" id="importModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-
             <div class="modal-header bg-warning">
-                <h5 class="modal-title">
-                    📤 Import Inventory Excel
-                </h5>
-
-                <button class="btn-close"
-                        data-bs-dismiss="modal">
-                </button>
+                <h5 class="modal-title">Import Inventory Excel</h5>
+                <button class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-
             <div class="modal-body">
-
-                <input
-                    type="file"
-                    id="excelFile"
-                    class="form-control"
-                    accept=".xlsx">
-
+                <input type="file" id="excelFile" class="form-control" accept=".xlsx">
                 <div class="mt-3">
-
                     <small class="text-muted">
-
-                        ✔ Excel (.xlsx) only<br>
-
-                        ✔ Serial Number is mandatory<br>
-
-                        ✔ Maximum upload: 2 GB
-
+                        Excel (.xlsx) only<br>
+                        Serial Number is mandatory<br>
+                        Maximum upload: 100 MB
                     </small>
-
                 </div>
-
             </div>
-
             <div class="modal-footer">
-
-                <button
-                    class="btn btn-secondary"
-                    data-bs-dismiss="modal">
-                    Cancel
-                </button>
-
-                <button
-                    class="btn btn-warning fw-bold"
-                    onclick="uploadExcel()">
-
-                    Upload
-
-                </button>
-
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-warning fw-bold" onclick="uploadExcel()">Upload</button>
             </div>
-
         </div>
     </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
-<!-- ===================================================================
-     Multi-format barcode/QR engine (zxing-wasm) loaded as a module.
-     It exposes readBarcodes/prepareZXingModule on window so the main
-     classic script below (used by all your existing onclick handlers)
-     can call it without needing to become a module itself.
-     Covers: Aztec, Codabar, Code39, Code93, Code128, DataMatrix,
-     EAN-8/13, ITF (Interleaved 2 of 5), MicroQRCode, PDF417, QRCode,
-     DataBar (RSS-14), DataBarExpanded (RSS Expanded), UPC-A/E.
-     =================================================================== -->
+<!-- ZXing engine: QR + common 1D barcodes only. Loads before scanning starts. -->
 <script type="module">
-    import { readBarcodes, setZXingModuleOverrides }
+    import { readBarcodes, prepareZXingModule, setZXingModuleOverrides }
         from "https://esm.sh/zxing-wasm@3.1.2/reader";
 
-    // Force zxing to load the wasm from YOUR server, not a CDN
     setZXingModuleOverrides({
         locateFile: (path) =>
-            path.endsWith('.wasm')
-                ? "/static/zxing_reader.wasm"   // served by Flask, same-origin
-                : path
+            path.endsWith(".wasm") ? "/static/zxing_reader.wasm" : path
     });
 
-   
+    // Only the formats an inventory app needs: QR + common linear barcodes.
+    window.ZXING_BARCODE_FORMATS = [
+        "QRCode", "Code128", "Code39", "Code93",
+        "EAN8", "EAN13", "UPCA", "UPCE", "ITF", "Codabar"
+    ];
 
-window.ZXING_ALL_FORMATS = [
-    "Aztec","Codabar","Code39","Code93","Code128","DataMatrix",
-    "EAN8","EAN13","ITF","MicroQRCode","PDF417","QRCode",
-    "DataBar","DataBarExpanded","UPCA","UPCE"
-];
-
-// Formats actually used on asset tags — decoding 4 formats instead of 16
-// is roughly 3-4x less wasm work per frame. Used on the fast path;
-// the full list above is still tried periodically as a fallback.
-window.ZXING_FAST_FORMATS = ["QRCode", "Code128", "Code39", "DataMatrix"];
-    window.zxingReadBarcodes = readBarcodes;
-    window.zxingReady = Promise.resolve();
-
-window.zxingReady
-.then(()=>{
-    document.getElementById("scan_engine_status").textContent =
-    "Scanner engine ready";
-})
-.catch(e=>{
-    console.error(e);
-
-    document.getElementById("scan_engine_status").textContent =
-    "Scanner failed to load";
-});    
+    window.zxingReady = (async () => {
+        await prepareZXingModule();
+        window.zxingReadBarcodes = readBarcodes;
+        const el = document.getElementById("scan_engine_status");
+        if (el) el.textContent = "Scanner engine ready";
+        return true;
+    })().catch((err) => {
+        console.error("ZXing initialization failed:", err);
+        const el = document.getElementById("scan_engine_status");
+        if (el) el.textContent = "Scanner failed to load";
+        throw err;
+    });
 </script>
 
-
-
-
-
 <script>
-let scanner, activeFieldId = 'scan_serial', cfg = {}, promptModal, confirmModalInstance, pendingIdentifiers = [], pendingReason = null;
+let scanner, activeFieldId = 'scan_serial', cfg = {}, promptModal,
+    confirmModalInstance, pendingIdentifiers = [], pendingReason = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     promptModal = new bootstrap.Modal(document.getElementById('promptModal'));
     confirmModalInstance = new bootstrap.Modal(document.getElementById('confirmModal'));
+    editModalInstance = new bootstrap.Modal(document.getElementById('editModal'));
     toggleUI();
 });
 
-// Non-blocking replacement for confirm()/prompt(). Resolves to `false` (cancelled)
-// or `true`/the entered reason string (confirmed). Never freezes the camera loop.
 function showConfirm(message, { needsReason = false } = {}) {
     return new Promise((resolve) => {
         document.getElementById('confirmModalMsg').textContent = message;
@@ -666,7 +439,6 @@ function showConfirm(message, { needsReason = false } = {}) {
 
         const okBtn = document.getElementById('confirmModalOk');
         const cancelBtn = document.getElementById('confirmModalCancel');
-
         const cleanup = () => { okBtn.onclick = null; cancelBtn.onclick = null; };
 
         okBtn.onclick = () => {
@@ -678,35 +450,20 @@ function showConfirm(message, { needsReason = false } = {}) {
             confirmModalInstance.hide();
             resolve(needsReason ? input.value.trim() : true);
         };
-        cancelBtn.onclick = () => {
-            cleanup();
-            confirmModalInstance.hide();
-            resolve(false);
-        };
-
+        cancelBtn.onclick = () => { cleanup(); confirmModalInstance.hide(); resolve(false); };
         confirmModalInstance.show();
     });
 }
 
 function toggleUI() {
-    const status = document.querySelector(
-        'input[name="status"]:checked'
-    ).value;
-
+    const status = document.querySelector('input[name="status"]:checked').value;
     const device = document.getElementById('m_device').value;
     const dept = document.getElementById('m_dept').value;
 
-    document.getElementById('m_other_device').style.display =
-        device === 'Other' ? 'block' : 'none';
-
-    document.getElementById('m_other_dept').style.display =
-        dept === 'Other' ? 'block' : 'none';
-
-    document.getElementById('group_loan').style.display =
-        status === 'Loaned' ? 'flex' : 'none';
-
-    document.getElementById('group_stock').style.display =
-        status === 'In Stock' ? 'flex' : 'none';
+    document.getElementById('m_other_device').style.display = device === 'Other' ? 'block' : 'none';
+    document.getElementById('m_other_dept').style.display = dept === 'Other' ? 'block' : 'none';
+    document.getElementById('group_loan').style.display = status === 'Loaned' ? 'flex' : 'none';
+    document.getElementById('group_stock').style.display = status === 'In Stock' ? 'flex' : 'none';
 
     updateSubstatusOptions(status);
 }
@@ -714,86 +471,41 @@ function toggleUI() {
 function updateSubstatusOptions(status) {
     const group = document.getElementById('substatus_group');
     const select = document.getElementById('m_substatus');
-
     const substatusOptions = {
-        "In Stock": ["New", "Active"],
-        "Loaned": ["Service Unit"],
-        "In Use": ["Active"],
-        "Repair": ["Ongoing"],
-        "Retired": ["Lost", "End of Life"]
+        "In Stock": ["New", "Active"], "Loaned": ["Service Unit"],
+        "In Use": ["Active"], "Repair": ["Ongoing"], "Retired": ["Lost", "End of Life"]
     };
-
     const options = substatusOptions[status] || [];
-
-    select.innerHTML =
-        '<option value="">Select substatus</option>';
+    select.innerHTML = '<option value="">Select substatus</option>';
 
     if (options.length === 0) {
         group.style.display = 'none';
-        select.required = false;
-        select.disabled = true;
-        select.value = '';
+        select.required = false; select.disabled = true; select.value = '';
         return;
     }
-
     group.style.display = 'block';
 
-    // Loaned and Repair are automatically assigned
     if (status === "Loaned" || status === "Repair" || status === "In Use") {
         select.innerHTML = '';
-
         const option = document.createElement('option');
-        option.value = options[0];
-        option.textContent = options[0];
-        option.selected = true;
-
+        option.value = options[0]; option.textContent = options[0]; option.selected = true;
         select.appendChild(option);
-
-        select.required = false;
-        select.disabled = true;
-
+        select.required = false; select.disabled = true;
         return;
     }
-
-    // In Stock and Retired require user selection
-    select.disabled = false;
-    select.required = true;
-
-    options.forEach(function(substatus) {
+    select.disabled = false; select.required = true;
+    options.forEach((sub) => {
         const option = document.createElement('option');
-
-        option.value = substatus;
-        option.textContent = substatus;
-
+        option.value = sub; option.textContent = sub;
         select.appendChild(option);
     });
 }
 
-
-
-const toBase64 = f => new Promise((res) => {
-    if (!f) return res(null);
-
-    const r = new FileReader();
-
-    r.readAsDataURL(f);
-
-    r.onload = () => res(r.result);
-});
-
 async function confirmSetup() {
-    const selectedStatus = document.querySelector(
-        'input[name="status"]:checked'
-    ).value;
+    const selectedStatus = document.querySelector('input[name="status"]:checked').value;
+    const selectedSubstatus = document.getElementById('m_substatus').value;
 
-    const selectedSubstatus = document.getElementById(
-        'm_substatus'
-    ).value;
-
-    if (
-        ['In Stock', 'Retired'].includes(selectedStatus) &&
-        !selectedSubstatus
-    ) {
+    if (['In Stock', 'Retired'].includes(selectedStatus) && !selectedSubstatus) {
         alert('Please select a substatus.');
         return;
     }
@@ -802,76 +514,48 @@ async function confirmSetup() {
         const body = {
             user: document.getElementById('m_user').value,
             empId: document.getElementById('m_emp_id').value,
-
             device: document.getElementById('m_device').value,
             otherDevice: document.getElementById('m_other_device').value,
-
             dept: document.getElementById('m_dept').value,
             otherDept: document.getElementById('m_other_dept').value,
-
-            scanMode: document.querySelector(
-                'input[name="scan_mode"]:checked'
-            ).value,
-
+            scanMode: document.querySelector('input[name="scan_mode"]:checked').value,
             status: selectedStatus,
             substatus: selectedSubstatus,
-
             email: document.getElementById('m_email').value,
             date: document.getElementById('m_date').value,
             notes: document.getElementById('m_notes').value,
             purchase: document.getElementById('m_purchase').value,
             end: document.getElementById('m_end').value,
-
-            image_data: await toBase64(
-                document.getElementById('m_image').files[0]
-            )
+            image_data: null   // base64 images are not stored server-side
         };
 
         const response = await fetch('/session/start', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         });
-
         const result = await response.json();
 
         if (!response.ok || !result.ok) {
-            alert(
-                result.error ||
-                result.message ||
-                'Unable to start scanning session.'
-            );
+            alert(result.error || result.message || 'Unable to start scanning session.');
             return;
         }
 
         cfg = result.config;
-
-        const setupModalElement =
-            document.getElementById('setupModal');
-
-        const setupModal =
-            bootstrap.Modal.getInstance(setupModalElement);
-
-        if (setupModal) {
-            setupModal.hide();
-        }
+        const setupModal = bootstrap.Modal.getInstance(document.getElementById('setupModal'));
+        if (setupModal) setupModal.hide();
 
         await startScanner();
-
     } catch (error) {
         console.error('Session start error:', error);
         alert('Unable to start the scanning session.');
     }
 }
 
-
-// On every serial scan, ASK Python whether to accept it
 async function onSerialScanned(text) {
     try {
         const res = await fetch('/scan/check', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ code: text })
         }).then(r => r.json());
 
@@ -884,10 +568,7 @@ async function onSerialScanned(text) {
         pendingReason = null;
         if (res.confirmMessage) {
             const answer = await showConfirm(res.confirmMessage, { needsReason: res.requireReason });
-            if (!answer) {
-                if (scanner) scanner.resume();
-                return;
-            }
+            if (!answer) { if (scanner) scanner.resume(); return; }
             if (res.requireReason) pendingReason = answer;
         }
 
@@ -897,95 +578,86 @@ async function onSerialScanned(text) {
         promptModal.show();
     } catch (err) {
         console.error(err);
-        alert("Network error — please try again.");
+        alert("Network error - please try again.");
         if (scanner) scanner.resume();
     }
 }
 
-
 // ============================================================
-// MultiFormatScanner: replaces the old Html5Qrcode integration.
-// Handles camera setup at the highest resolution available,
-// continuous autofocus, torch/zoom controls, and a decode loop
-// that runs every frame through zxing-wasm across all formats.
+// Fast, single-format-set scanner (QR + common barcodes only)
 // ============================================================
-
-    class MultiFormatScanner {
+class MultiFormatScanner {
     constructor(videoEl, canvasEl, onResult) {
         this.video = videoEl;
         this.canvas = canvasEl;
-        this.ctx = canvasEl.getContext('2d', { willReadFrequently: true });
+        this.ctx = canvasEl.getContext("2d", { willReadFrequently: true });
         this.onResult = onResult;
         this.running = false;
         this.paused = false;
         this.locked = false;
         this.track = null;
-        this._lastDecode = -1000; // forces an immediate first decode attempt
-        this._frameCount = 0;
+        this.lastDecodeTime = 0;
+        this.decodeInterval = 120; // ~8 decode attempts per second
+        this.busy = false;
+        this._torchOn = false;
+        this.loop = this.loop.bind(this);
     }
 
     async start() {
-        // Capped at 1080p — decoding happens on a downscaled crop anyway,
-        // so 4K capture only slows down camera startup/autofocus for no benefit.
-        const attempts = [
-            { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
-            { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
-            { facingMode: 'environment' }
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error("Camera access is not supported by this browser.");
+        }
+
+        const cameraOptions = [
+            { video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, audio: false },
+            { video: { facingMode: "environment" }, audio: false }
         ];
 
-        let stream = null, lastErr = null;
-        for (const videoConstraints of attempts) {
-            try {
-                stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
-                break;
-            } catch (e) {
-                lastErr = e;
-            }
+        let stream = null, lastError = null;
+        for (const options of cameraOptions) {
+            try { stream = await navigator.mediaDevices.getUserMedia(options); break; }
+            catch (error) { lastError = error; }
         }
-        if (!stream) throw lastErr || new Error('Camera unavailable');
+        if (!stream) throw lastError || new Error("Unable to access the camera.");
 
         this.track = stream.getVideoTracks()[0];
         this.video.srcObject = stream;
+        this.video.setAttribute("playsinline", "true");
+        this.video.muted = true;
         await this.video.play();
 
-        // Continuous autofocus where supported (helps a lot with 1D codes).
         const caps = this.track.getCapabilities ? this.track.getCapabilities() : {};
-        if (caps.focusMode && caps.focusMode.includes('continuous')) {
-            await this.track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+
+        if (Array.isArray(caps.focusMode) && caps.focusMode.includes("continuous")) {
+            await this.track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }).catch(() => {});
         }
 
-        // Wire up torch button if supported.
-        const torchBtn = document.getElementById('btn_torch');
-        if (caps.torch) {
-            torchBtn.style.display = 'inline-block';
-            this._torchOn = false;
-        } else {
-            torchBtn.style.display = 'none';
-        }
+        const torchBtn = document.getElementById("btn_torch");
+        if (torchBtn) torchBtn.style.display = caps.torch ? "inline-block" : "none";
 
-        // Wire up zoom slider if supported.
-        const zoomWrap = document.getElementById('zoom-wrap');
-        const zoomSlider = document.getElementById('zoom_slider');
-        if (caps.zoom) {
-            zoomWrap.style.display = 'flex';
+        const zoomWrap = document.getElementById("zoom-wrap");
+        const zoomSlider = document.getElementById("zoom_slider");
+        if (zoomWrap && zoomSlider && caps.zoom) {
+            zoomWrap.style.display = "flex";
             zoomSlider.min = caps.zoom.min;
             zoomSlider.max = caps.zoom.max;
             zoomSlider.step = caps.zoom.step || 0.1;
             zoomSlider.value = this.track.getSettings().zoom || caps.zoom.min;
-        } else {
-            zoomWrap.style.display = 'none';
+        } else if (zoomWrap) {
+            zoomWrap.style.display = "none";
         }
 
-        document.getElementById('scanner-controls').style.display = 'flex';
+        const controls = document.getElementById("scanner-controls");
+        if (controls) controls.style.display = "flex";
 
-        this.running = true;
-        this.paused = false;
-        requestAnimationFrame(this._loop);
+        this.running = true; this.paused = false; this.locked = false; this.busy = false;
+        requestAnimationFrame(this.loop);
     }
 
     async toggleTorch() {
-        const caps = this.track && this.track.getCapabilities ? this.track.getCapabilities() : {};
-        if (!caps.torch) return;
+        if (!this.track) return false;
+        const caps = this.track.getCapabilities ? this.track.getCapabilities() : {};
+        if (!caps.torch) return false;
         this._torchOn = !this._torchOn;
         await this.track.applyConstraints({ advanced: [{ torch: this._torchOn }] }).catch(() => {});
         return this._torchOn;
@@ -995,86 +667,58 @@ async function onSerialScanned(text) {
         if (!this.track) return;
         const caps = this.track.getCapabilities ? this.track.getCapabilities() : {};
         if (!caps.zoom) return;
-        await this.track.applyConstraints({ advanced: [{ zoom: parseFloat(value) }] }).catch(() => {});
+        await this.track.applyConstraints({ advanced: [{ zoom: Number(value) }] }).catch(() => {});
     }
 
-    pause() {
-        this.paused = true;
-    }
+    pause()  { this.paused = true; }
+    resume() { this.paused = false; this.locked = false; this.busy = false; }
 
-    resume() {
-        this.paused = false;
-        this.locked = false;
-    }
-
-    // Decode loop — paced with requestAnimationFrame timestamps instead of
-    // nested setTimeout for steadier, drift-free timing (~11fps decode rate).
-    // Most frames use a small format set with no "tryHarder" pass, which is
-    // roughly 5-8x cheaper than the old every-frame settings; every 4th
-    // frame falls back to the full format list + tryHarder so codes at odd
-    // angles or with low contrast still get caught.
-    _loop = async (timestamp) => {
+    async loop(timestamp) {
         if (!this.running) return;
+        requestAnimationFrame(this.loop);
 
-        if (this.paused || this.locked || !window.zxingReadBarcodes) {
-            requestAnimationFrame(this._loop);
-            return;
-        }
-
-        if (timestamp === undefined) timestamp = performance.now();
-        if (timestamp - this._lastDecode < 60) {
-            requestAnimationFrame(this._loop);
-            return;
-        }
-        this._lastDecode = timestamp;
+        if (this.paused || this.locked || this.busy || !window.zxingReadBarcodes) return;
+        if (timestamp - this.lastDecodeTime < this.decodeInterval) return;
+        this.lastDecodeTime = timestamp;
 
         const vw = this.video.videoWidth;
         const vh = this.video.videoHeight;
+        if (!vw || !vh) return;
 
-        if (vw && vh) {
-            // Crop to a centered square region matching the on-screen scan box.
-            const cropSize = Math.floor(Math.min(vw, vh) * 0.7);
-            const sx = (vw - cropSize) / 2;
-            const sy = (vh - cropSize) / 2;
-
-            // Cap the working resolution regardless of camera resolution —
-            // decode time scales with pixel count, and 640px is plenty for
-            // a barcode filling the scan box.
-            const targetSize = Math.min(cropSize, 900);
+        this.busy = true;
+        try {
+            const cropSize = Math.floor(Math.min(vw, vh) * 0.72);
+            const sx = Math.floor((vw - cropSize) / 2);
+            const sy = Math.floor((vh - cropSize) / 2);
+            const targetSize = Math.min(cropSize, 640);
 
             this.canvas.width = targetSize;
             this.canvas.height = targetSize;
-            this.ctx.imageSmoothingEnabled = false; // smoothing blurs bars during downscale — kills barcode contrast
+            this.ctx.imageSmoothingEnabled = false;
             this.ctx.drawImage(this.video, sx, sy, cropSize, cropSize, 0, 0, targetSize, targetSize);
 
-            try {
-                const imageData = this.ctx.getImageData(0, 0, targetSize, targetSize);
+            const imageData = this.ctx.getImageData(0, 0, targetSize, targetSize);
+            const results = await window.zxingReadBarcodes(imageData, {
+                formats: window.ZXING_BARCODE_FORMATS,
+                tryHarder: false,
+                maxNumberOfSymbols: 1
+            });
 
-                this._frameCount++;
-                const useTryHarder = this._frameCount % 8 === 0; // full sweep less often — it's the expensive one
-                const formats = useTryHarder ? window.ZXING_ALL_FORMATS : window.ZXING_FAST_FORMATS;
-
-                const results = await window.zxingReadBarcodes(imageData, {
-                    formats,
-                    tryHarder: useTryHarder,
-                    maxNumberOfSymbols: 1
-                });
-
-                if (results && results.length && !this.paused && !this.locked) {
-                    this.locked = true; // prevent duplicate triggers while the UI reacts
-                    this.onResult(results[0].text, results[0].format);
-                }
-            } catch (e) {
-                // No barcode in this frame — normal, keep scanning.
+            if (results && results.length && !this.paused && !this.locked) {
+                this.locked = true;
+                this.onResult(results[0].text, results[0].format);
             }
+        } catch (e) {
+            // No code in this frame - normal, keep scanning.
+        } finally {
+            this.busy = false;
         }
-
-        requestAnimationFrame(this._loop);
-    };
+    }
 
     stop() {
-        this.running = false;
-        if (this.track) this.track.stop();
+        this.running = false; this.paused = true; this.busy = false;
+        if (this.track) { this.track.stop(); this.track = null; }
+        this.video.srcObject = null;
     }
 }
 
@@ -1086,21 +730,12 @@ async function toggleTorch() {
     btn.classList.toggle('btn-outline-dark', !on);
 }
 
-function setZoomLevel(value) {
-    if (scanner) scanner.setZoom(value);
-}
+function setZoomLevel(value) { if (scanner) scanner.setZoom(value); }
 
-// ============================================================
-// Photo-upload fallback: decode a barcode/QR code from a still
-// photo (camera capture or file picker) using the same zxing-wasm
-// engine and format list as the live scanner, then feed the result
-// into the exact same pipeline (onSerialScanned / active field).
-// ============================================================
 function fileToImageData(file) {
     return new Promise((resolve, reject) => {
         const img = new Image();
         const url = URL.createObjectURL(file);
-
         img.onload = () => {
             const canvas = document.createElement('canvas');
             canvas.width = img.naturalWidth;
@@ -1108,39 +743,34 @@ function fileToImageData(file) {
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
             ctx.drawImage(img, 0, 0);
             URL.revokeObjectURL(url);
-            try {
-                resolve(ctx.getImageData(0, 0, canvas.width, canvas.height));
-            } catch (e) {
-                reject(e);
-            }
+            try { resolve(ctx.getImageData(0, 0, canvas.width, canvas.height)); }
+            catch (e) { reject(e); }
         };
-        img.onerror = () => {
-            URL.revokeObjectURL(url);
-            reject(new Error('Could not load that image.'));
-        };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not load that image.')); };
         img.src = url;
     });
 }
 
 async function handlePhotoUpload(event) {
     const file = event.target.files[0];
-    event.target.value = ''; // reset so the same file can be re-picked later
+    event.target.value = '';
     if (!file) return;
 
-    if (!window.zxingReadBarcodes) {
-        alert("Scanner engine isn't ready yet — please wait a moment and try again.");
+    try { await window.zxingReady; }
+    catch (e) {
+        alert("Scanner engine isn't ready yet - please wait a moment and try again.");
         return;
     }
 
     const statusEl = document.getElementById('scan_engine_status');
     const prevStatus = statusEl.textContent;
-    statusEl.textContent = 'Reading photo…';
+    statusEl.textContent = 'Reading photo...';
 
     try {
         const imageData = await fileToImageData(file);
         const results = await window.zxingReadBarcodes(imageData, {
-            formats: window.ZXING_ALL_FORMATS,
-            tryHarder: true,
+            formats: window.ZXING_BARCODE_FORMATS,
+            tryHarder: true,   // OK for a one-shot photo
             maxNumberOfSymbols: 1
         });
 
@@ -1150,7 +780,6 @@ async function handlePhotoUpload(event) {
         }
 
         const text = results[0].text;
-
         if (activeFieldId === 'scan_serial') {
             if (scanner) scanner.pause();
             onSerialScanned(text);
@@ -1166,7 +795,7 @@ async function handlePhotoUpload(event) {
     }
 }
 
-async function startScanner() {          // <-- 'async' MUST be here
+async function startScanner() {
     document.getElementById('start_section').style.display = 'none';
     document.getElementById('session_info').style.display = 'block';
     document.getElementById('scanner_section').style.display = 'block';
@@ -1178,40 +807,26 @@ async function startScanner() {          // <-- 'async' MUST be here
     document.getElementById('ui_device').textContent = cfg.device;
     document.getElementById('ui_mode').textContent = cfg.scanMode + " Mode";
 
-    if (!scanner) {
-        const videoEl = document.getElementById('scanner-video');
-        const canvasEl = document.getElementById('scanner-canvas');
-        scanner = new MultiFormatScanner(videoEl, canvasEl, (text) => {
-            if (activeFieldId === 'scan_serial') { scanner.pause(); onSerialScanned(text); }
-            else { document.getElementById(activeFieldId).value = text; scanner.locked = false; }
-        });
-    }
-
     try {
+        await window.zxingReady;   // wait until the WASM engine is ready
 
-    await scanner.start();
+        if (!scanner) {
+            const videoEl = document.getElementById('scanner-video');
+            const canvasEl = document.getElementById('scanner-canvas');
+            scanner = new MultiFormatScanner(videoEl, canvasEl, (text) => {
+                if (activeFieldId === 'scan_serial') { scanner.pause(); onSerialScanned(text); }
+                else { document.getElementById(activeFieldId).value = text; scanner.resume(); }
+            });
+        }
 
-    document.getElementById("scan_engine_status").textContent =
-    "Camera Ready";
-
+        await scanner.start();
+        document.getElementById("scan_engine_status").textContent = "Camera ready";
+    } catch (err) {
+        console.error(err);
+        document.getElementById("scan_engine_status").textContent = "Camera unavailable";
+        alert(err.message || "Unable to start the scanner. Check camera permissions.");
     }
-catch(err){
-
-    console.error(err);
-
-    alert(err.message);
-
 }
-
-    if (window.zxingReady && window.zxingReady.catch) {   // no await here — good
-        window.zxingReady.catch(() => alert("Scanner engine failed to load."));
-    }
-}                                          // <-- function closes HERE
-
-
-
-    
-
 
 function setNextField(id) {
     promptModal.hide();
@@ -1228,7 +843,7 @@ function saveData() {
         code: document.getElementById('scan_serial').value,
         imei: document.getElementById('scan_imei').value,
         mac_address: document.getElementById('scan_mac').value,
-        reason: pendingReason          // NEW — was missing, so Retired→In Use reactivation always failed
+        reason: pendingReason
     };
 
     fetch('/scanned', {
@@ -1254,48 +869,23 @@ function saveData() {
 
                 const table = document.getElementById('history_body');
                 const newRow = `
-                                <tr>
-                                    <td class="small text-muted">Just Now</td>
-                                
-                                    <td>
-                                        <div class="fw-bold">
-                                            ${payload.code}
-                                        </div>
-                                        <div class="small text-muted">
-                                            ${payload.device}
-                                        </div>
-                                    </td>
-                                
-                                    <td>
-                                        <span class="badge rounded-pill bg-secondary status-badge">
-                                            ${payload.status}
-                                        </span>
-                                    </td>
-                                
-                                    <td>
-                                        ${
-                                            payload.substatus
-                                            ? `<span class="badge bg-light text-dark border">
-                                                   ${payload.substatus}
-                                               </span>`
-                                            : '<span class="text-muted">-</span>'
-                                        }
-                                    </td>
-                                
-                                    <td>
-                                        ${payload.user}
-                                    </td>
-                                
-                                    <td>-</td>
-                                </tr>
-                                `;
-
+                    <tr>
+                        <td class="small text-muted">Just Now</td>
+                        <td>
+                            <div class="fw-bold">${payload.code}</div>
+                            <div class="small text-muted">${payload.device}</div>
+                        </td>
+                        <td><span class="badge rounded-pill bg-secondary status-badge">${payload.status}</span></td>
+                        <td>${payload.substatus ? `<span class="badge bg-light text-dark border">${payload.substatus}</span>` : '<span class="text-muted">-</span>'}</td>
+                        <td>${payload.user}</td>
+                        <td>-</td>
+                    </tr>`;
                 table.insertAdjacentHTML('afterbegin', newRow);
             } else {
                 location.reload();
             }
         } else {
-            alert(d.message || "Save failed.");   // NEW — previously failed saves were silent
+            alert(d.message || "Save failed.");
             if (scanner) scanner.resume();
         }
     })
@@ -1306,21 +896,28 @@ function saveData() {
     });
 }
 
-function deleteSingle(id) {
-    if (confirm("Permanently delete this record?")) {
-        fetch('/delete', {
+async function deleteSingle(id) {
+    const confirmed = await showConfirm("Permanently delete this record?");
+    if (!confirmed) return;
+    try {
+        const response = await fetch('/delete', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ids: [id] })
-        }).then(() => location.reload());
+        });
+        const result = await response.json();
+        if (!response.ok || result.status !== 'success') {
+            alert(result.message || "Delete failed.");
+            return;
+        }
+        location.reload();
+    } catch (err) {
+        console.error(err);
+        alert("Network error while deleting the record.");
     }
 }
 
 let editModalInstance, editOriginalStatus = null;
-
-document.addEventListener('DOMContentLoaded', () => {
-    editModalInstance = new bootstrap.Modal(document.getElementById('editModal'));
-});
 
 function updateEditSubstatusOptions() {
     const status = document.getElementById('e_status').value;
@@ -1329,54 +926,38 @@ function updateEditSubstatusOptions() {
     const reasonGroup = document.getElementById('e_reason_group');
 
     const substatusOptions = {
-        "In Stock": ["New", "Active"],
-        "Loaned": ["Service Unit"],
-        "In Use": ["Active"],  
-        "Repair": ["Ongoing"],
-        "Retired": ["Lost", "End of Life"]
+        "In Stock": ["New", "Active"], "Loaned": ["Service Unit"],
+        "In Use": ["Active"], "Repair": ["Ongoing"], "Retired": ["Lost", "End of Life"]
     };
-
     const options = substatusOptions[status] || [];
     select.innerHTML = '<option value="">Select substatus</option>';
 
     if (options.length === 0) {
-        group.style.display = 'none';
-        select.disabled = true;
-        select.value = '';
+        group.style.display = 'none'; select.disabled = true; select.value = '';
     } else if (status === "Loaned" || status === "Repair" || status === "In Use") {
         select.innerHTML = '';
         const opt = document.createElement('option');
-        opt.value = options[0];
-        opt.textContent = options[0];
-        opt.selected = true;
+        opt.value = options[0]; opt.textContent = options[0]; opt.selected = true;
         select.appendChild(opt);
-        select.disabled = true;
-        group.style.display = 'block';
+        select.disabled = true; group.style.display = 'block';
     } else {
         select.disabled = false;
         options.forEach(sub => {
             const opt = document.createElement('option');
-            opt.value = sub;
-            opt.textContent = sub;
+            opt.value = sub; opt.textContent = sub;
             select.appendChild(opt);
         });
         group.style.display = 'block';
     }
 
-    // Show reason field only when reactivating a Retired record to In Use
-    reasonGroup.style.display =
-        (editOriginalStatus === "Retired" && status === "In Use") ? 'block' : 'none';
+    reasonGroup.style.display = (editOriginalStatus === "Retired" && status === "In Use") ? 'block' : 'none';
 }
 
 async function openEditModal(scanId) {
     try {
         const res = await fetch(`/scan/${scanId}`);
         const data = await res.json();
-
-        if (data.status !== "success") {
-            alert(data.message || "Unable to load record.");
-            return;
-        }
+        if (data.status !== "success") { alert(data.message || "Unable to load record."); return; }
 
         const s = data.scan;
         editOriginalStatus = s.status;
@@ -1409,7 +990,6 @@ async function openEditModal(scanId) {
 
 async function saveEditData() {
     const status = document.getElementById('e_status').value;
-
     if (editOriginalStatus === "Retired" && status === "In Use" &&
         !document.getElementById('e_reason').value.trim()) {
         alert("A reason is required to reactivate a Retired unit.");
@@ -1433,7 +1013,6 @@ async function saveEditData() {
         email: document.getElementById('e_email').value,
         notes: document.getElementById('e_notes').value
     };
-
     const id = document.getElementById('e_id').value;
 
     try {
@@ -1443,12 +1022,8 @@ async function saveEditData() {
             body: JSON.stringify(payload)
         });
         const data = await res.json();
-
-        if (data.status === "success") {
-            location.reload();
-        } else {
-            alert(data.message || "Save failed.");
-        }
+        if (data.status === "success") location.reload();
+        else alert(data.message || "Save failed.");
     } catch (err) {
         console.error(err);
         alert("Network error while saving.");
@@ -1456,54 +1031,25 @@ async function saveEditData() {
 }
 
 async function uploadExcel() {
-
     const file = document.getElementById("excelFile").files[0];
-
-    if (!file) {
-        alert("Please select an Excel file.");
-        return;
-    }
+    if (!file) { alert("Please select an Excel file."); return; }
 
     const formData = new FormData();
-
     formData.append("file", file);
 
     try {
-
-        const response = await fetch("/import/excel", {
-
-            method: "POST",
-
-            body: formData
-
-        });
-
+        const response = await fetch("/import/excel", { method: "POST", body: formData });
         const result = await response.json();
-
         if (result.status === "success") {
-
-            alert(
-                "Import Complete\n\n" +
-                "Imported : " + result.imported +
-                "\nSkipped : " + result.skipped
-            );
-
+            alert("Import Complete\n\nImported : " + result.imported + "\nSkipped : " + result.skipped);
             location.reload();
-
         } else {
-
             alert(result.message);
-
         }
-
     } catch (e) {
-
         console.error(e);
-
         alert("Upload failed.");
-
     }
-
 }
 </script>
 </body>
