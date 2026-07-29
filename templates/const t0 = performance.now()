@@ -626,7 +626,7 @@ window.ZXING_ALL_FORMATS = [
 // the full list above is still tried periodically as a fallback.
 window.ZXING_FAST_FORMATS = ["QRCode", "Code128", "Code39", "DataMatrix"];
     window.zxingReadBarcodes = readBarcodes;
-    window.zxingReady = Promise.resolve();MultiFormatScanner
+    window.zxingReady = Promise.resolve();
 
 window.zxingReady
 .then(()=>{
