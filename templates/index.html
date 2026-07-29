@@ -615,10 +615,16 @@
 
    
 
+window.ZXING_ALL_FORMATS = [
+    "Aztec","Codabar","Code39","Code93","Code128","DataMatrix",
+    "EAN8","EAN13","ITF","MicroQRCode","PDF417","QRCode",
+    "DataBar","DataBarExpanded","UPCA","UPCE"
+];
+
 // Formats actually used on asset tags — decoding 4 formats instead of 16
 // is roughly 3-4x less wasm work per frame. Used on the fast path;
 // the full list above is still tried periodically as a fallback.
-window.ZXING_FAST_FORMATS = ["QRCode", "Code128", "Code39", "DataMatrix", "EAN13", "EAN8", "UPCA", "UPCE"];
+window.ZXING_FAST_FORMATS = ["QRCode", "Code128", "Code39", "DataMatrix"];
     window.zxingReadBarcodes = readBarcodes;
     window.zxingReady = Promise.resolve();MultiFormatScanner
 
