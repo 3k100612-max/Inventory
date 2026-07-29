@@ -70,9 +70,10 @@ login_manager.login_view = 'login'
 
 
 # --- SECURITY HEADERS ---
+# --- SECURITY HEADERS ---
 @app.after_request
 def add_security_headers(resp):
-        resp.headers["Content-Security-Policy"] = (
+    resp.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' "
         "https://cdn.jsdelivr.net "
@@ -91,11 +92,11 @@ def add_security_headers(resp):
         "font-src 'self' data: "
         "https://cdn.jsdelivr.net;"
     )
-
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["X-Frame-Options"] = "SAMEORIGIN"
     resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return resp
+
 
 
 @app.errorhandler(RequestEntityTooLarge)
