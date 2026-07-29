@@ -4,19 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inventory Control Pro</title>
-    <!-- CSP is set by the Flask response header; no duplicate meta CSP here. -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background-color: #f4f7f6; padding: 20px; font-family: 'Segoe UI', sans-serif; }
         .card { border: none; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); margin-bottom: 20px; }
         #reader { width: 100%; min-height: 300px; background: #000; border-radius: 15px; overflow: hidden; position: relative; }
         #reader video { width: 100% !important; height: auto !important; border-radius: 15px; display: block; }
-        #scan-box-overlay {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 55%; aspect-ratio: 1 / 1; max-width: 280px;
-            border: 3px solid rgba(13,110,253,0.9); border-radius: 12px;
-            pointer-events: none; box-shadow: 0 0 0 9999px rgba(0,0,0,0.35);
-        }
         #scanner-controls { display: none; }
         .session-info-bar { display: none; background: #fff; border-left: 6px solid #0d6efd; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
         .active-scan-field { border: 3px solid #0d6efd !important; background-color: #e7f1ff !important; }
@@ -65,11 +58,7 @@
 
     <div id="scanner_section" style="display:none;">
         <div class="card p-3">
-            <div id="reader">
-                <video id="scanner-video" playsinline muted autoplay></video>
-                <canvas id="scanner-canvas" style="display:none;"></canvas>
-                <div id="scan-box-overlay"></div>
-            </div>
+            <div id="reader"></div>
 
             <div id="scanner-controls" class="d-flex align-items-center gap-3 mt-2">
                 <button type="button" class="btn btn-sm btn-outline-dark" id="btn_torch" onclick="toggleTorch()" style="display:none;">Torch</button>
@@ -387,45 +376,27 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-
-<!-- ZXing engine: QR + common 1D barcodes only. Loads before scanning starts. -->
-<script type="module">
-    import { readBarcodes, prepareZXingModule, setZXingModuleOverrides }
-        from "https://esm.sh/zxing-wasm@3.1.2/reader";
-
-    setZXingModuleOverrides({
-        locateFile: (path) =>
-            path.endsWith(".wasm") ? "/static/zxing_reader.wasm" : path
-    });
-
-    // Only the formats an inventory app needs: QR + common linear barcodes.
-    window.ZXING_BARCODE_FORMATS = [
-        "QRCode", "Code128"
-    ];
-
-    window.zxingReady = (async () => {
-        await prepareZXingModule();
-        window.zxingReadBarcodes = readBarcodes;
-        const el = document.getElementById("scan_engine_status");
-        if (el) el.textContent = "Scanner engine ready";
-        return true;
-    })().catch((err) => {
-        console.error("ZXing initialization failed:", err);
-        const el = document.getElementById("scan_engine_status");
-        if (el) el.textContent = "Scanner failed to load";
-        throw err;
-    });
-</script>
+<!-- Html5Qrcode scanner engine (pinned so the format enum is reliably available) -->
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
 <script>
 let scanner, activeFieldId = 'scan_serial', cfg = {}, promptModal,
     confirmModalInstance, pendingIdentifiers = [], pendingReason = null;
+
+// Cut off everything from the first ";" onward, then trim.
+// e.g. "ABC123;extra;stuff" -> "ABC123"
+function cleanCode(text) {
+    if (text === null || text === undefined) return "";
+    return String(text).split(';')[0].trim();
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     promptModal = new bootstrap.Modal(document.getElementById('promptModal'));
     confirmModalInstance = new bootstrap.Modal(document.getElementById('confirmModal'));
     editModalInstance = new bootstrap.Modal(document.getElementById('editModal'));
     toggleUI();
+    const el = document.getElementById('scan_engine_status');
+    if (el) el.textContent = window.Html5Qrcode ? "Scanner engine ready" : "Scanner failed to load";
 });
 
 function showConfirm(message, { needsReason = false } = {}) {
@@ -525,7 +496,7 @@ async function confirmSetup() {
             notes: document.getElementById('m_notes').value,
             purchase: document.getElementById('m_purchase').value,
             end: document.getElementById('m_end').value,
-            image_data: null   // base64 images are not stored server-side
+            image_data: null
         };
 
         const response = await fetch('/session/start', {
@@ -583,53 +554,67 @@ async function onSerialScanned(text) {
 }
 
 // ============================================================
-// Fast, single-format-set scanner (QR + common barcodes only)
+// Html5Qrcode wrapper: QR + Code128 only, native detector when
+// available. Keeps the same interface the rest of the app expects
+// (start / pause / resume / stop / toggleTorch / setZoom / .locked).
 // ============================================================
 class MultiFormatScanner {
-    constructor(videoEl, canvasEl, onResult) {
-        this.video = videoEl;
-        this.canvas = canvasEl;
-        this.ctx = canvasEl.getContext("2d", { willReadFrequently: true });
+    constructor(readerId, onResult) {
+        this.readerId = readerId;
         this.onResult = onResult;
-        this.running = false;
+        this.html5 = null;
         this.paused = false;
         this.locked = false;
-        this.track = null;
-        this.lastDecodeTime = 0;
-        this.decodeInterval = 60; // ~8 decode attempts per second
-        this.busy = false;
         this._torchOn = false;
-        this.loop = this.loop.bind(this);
+    }
+
+    _buildConfig() {
+        return {
+            fps: 10,
+            qrbox: (viewWidth, viewHeight) => {
+                const width = Math.max(50, Math.floor(viewWidth * 0.8));
+                const height = Math.max(50, Math.floor(viewHeight * 0.55));
+                return { width, height };
+            },
+            disableFlip: true,
+            videoConstraints: {
+                facingMode: "environment",
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            }
+        };
     }
 
     async start() {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            throw new Error("Camera access is not supported by this browser.");
-        }
+        if (!window.Html5Qrcode) throw new Error("Scanner engine not loaded.");
 
-        const cameraOptions = [
-            { video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, audio: false },
-            { video: { facingMode: "environment" }, audio: false }
-        ];
+        this.html5 = new Html5Qrcode(this.readerId, {
+            // Only QR + Code128 -> far faster than trying every format.
+            formatsToSupport: [
+                Html5QrcodeSupportedFormats.QR_CODE,
+                Html5QrcodeSupportedFormats.CODE_128
+            ],
+            experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+            verbose: false
+        });
 
-        let stream = null, lastError = null;
-        for (const options of cameraOptions) {
-            try { stream = await navigator.mediaDevices.getUserMedia(options); break; }
-            catch (error) { lastError = error; }
-        }
-        if (!stream) throw lastError || new Error("Unable to access the camera.");
+        await this.html5.start(
+            { facingMode: "environment" },
+            this._buildConfig(),
+            (decodedText) => {
+                if (this.paused || this.locked) return;
+                this.locked = true;
+                this.onResult(cleanCode(decodedText));
+            },
+            () => { /* per-frame no-match: ignore */ }
+        );
 
-        this.track = stream.getVideoTracks()[0];
-        this.video.srcObject = stream;
-        this.video.setAttribute("playsinline", "true");
-        this.video.muted = true;
-        await this.video.play();
+        await this._setupControls();
+    }
 
-        const caps = this.track.getCapabilities ? this.track.getCapabilities() : {};
-
-        if (Array.isArray(caps.focusMode) && caps.focusMode.includes("continuous")) {
-            await this.track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }).catch(() => {});
-        }
+    async _setupControls() {
+        let caps = {};
+        try { caps = this.html5.getRunningTrackCapabilities() || {}; } catch (e) { caps = {}; }
 
         const torchBtn = document.getElementById("btn_torch");
         if (torchBtn) torchBtn.style.display = caps.torch ? "inline-block" : "none";
@@ -641,88 +626,56 @@ class MultiFormatScanner {
             zoomSlider.min = caps.zoom.min;
             zoomSlider.max = caps.zoom.max;
             zoomSlider.step = caps.zoom.step || 0.1;
-            zoomSlider.value = this.track.getSettings().zoom || caps.zoom.min;
+            // Nudge zoom in so small labels fill more of the frame.
+            const target = Math.min(caps.zoom.max, (caps.zoom.min || 1) * 2);
+            try { await this.html5.applyVideoConstraints({ advanced: [{ zoom: target }] }); } catch (e) {}
+            zoomSlider.value = target;
         } else if (zoomWrap) {
             zoomWrap.style.display = "none";
-        }
-        if (caps.zoom) {
-            const target = Math.min(caps.zoom.max, (caps.zoom.min || 1) * 2);
-            await this.track.applyConstraints({ advanced: [{ zoom: target }] }).catch(() => {});
-            if (zoomSlider) zoomSlider.value = target;
         }
 
         const controls = document.getElementById("scanner-controls");
         if (controls) controls.style.display = "flex";
-
-        this.running = true; this.paused = false; this.locked = false; this.busy = false;
-        requestAnimationFrame(this.loop);
     }
 
     async toggleTorch() {
-        if (!this.track) return false;
-        const caps = this.track.getCapabilities ? this.track.getCapabilities() : {};
-        if (!caps.torch) return false;
-        this._torchOn = !this._torchOn;
-        await this.track.applyConstraints({ advanced: [{ torch: this._torchOn }] }).catch(() => {});
-        return this._torchOn;
+        if (!this.html5) return false;
+        try {
+            const caps = this.html5.getRunningTrackCapabilities() || {};
+            if (!caps.torch) return false;
+            this._torchOn = !this._torchOn;
+            await this.html5.applyVideoConstraints({ advanced: [{ torch: this._torchOn }] });
+            return this._torchOn;
+        } catch (e) { return false; }
     }
 
     async setZoom(value) {
-        if (!this.track) return;
-        const caps = this.track.getCapabilities ? this.track.getCapabilities() : {};
-        if (!caps.zoom) return;
-        await this.track.applyConstraints({ advanced: [{ zoom: Number(value) }] }).catch(() => {});
+        if (!this.html5) return;
+        try {
+            const caps = this.html5.getRunningTrackCapabilities() || {};
+            if (!caps.zoom) return;
+            await this.html5.applyVideoConstraints({ advanced: [{ zoom: Number(value) }] });
+        } catch (e) {}
     }
 
-    pause()  { this.paused = true; }
-    resume() { this.paused = false; this.locked = false; this.busy = false; }
+    pause() {
+        this.paused = true;
+        try { if (this.html5) this.html5.pause(true); } catch (e) {}
+    }
 
-    async loop(timestamp) {
-        if (!this.running) return;
-        requestAnimationFrame(this.loop);
-
-        if (this.paused || this.locked || this.busy || !window.zxingReadBarcodes) return;
-        if (timestamp - this.lastDecodeTime < this.decodeInterval) return;
-        this.lastDecodeTime = timestamp;
-
-        const vw = this.video.videoWidth;
-        const vh = this.video.videoHeight;
-        if (!vw || !vh) return;
-
-        this.busy = true;
-        try {
-            const cropSize = Math.floor(Math.min(vw, vh) * 0.6);
-            const sx = Math.floor((vw - cropSize) / 2);
-            const sy = Math.floor((vh - cropSize) / 2);
-            const targetSize = Math.min(cropSize, 640);
-
-            this.canvas.width = targetSize;
-            this.canvas.height = targetSize;
-            this.ctx.imageSmoothingEnabled = false;
-            this.ctx.drawImage(this.video, sx, sy, cropSize, cropSize, 0, 0, targetSize, targetSize);
-
-            const imageData = this.ctx.getImageData(0, 0, targetSize, targetSize);
-            const results = await window.zxingReadBarcodes(imageData, {
-                formats: window.ZXING_BARCODE_FORMATS,
-                tryHarder: false,
-                maxNumberOfSymbols: 1
-            });
-
-            if (results && results.length && !this.paused && !this.locked) {
-                this.locked = true;
-                this.onResult(results[0].text, results[0].format);
-            }
-        } catch (e) {
-            // No code in this frame - normal, keep scanning.
-        } finally {
-            this.busy = false;
-        }
+    resume() {
+        this.paused = false;
+        this.locked = false;
+        try { if (this.html5) this.html5.resume(); } catch (e) {}
     }
 
     stop() {
-        this.running = false; this.paused = true; this.busy = false;
-        if (this.track) { this.track.stop(); this.track = null; }
-        this.video.srcObject = null;
+        this.paused = true;
+        if (this.html5) {
+            this.html5.stop()
+                .then(() => { try { this.html5.clear(); } catch (e) {} })
+                .catch(() => {});
+        }
     }
 }
 
@@ -736,33 +689,14 @@ async function toggleTorch() {
 
 function setZoomLevel(value) { if (scanner) scanner.setZoom(value); }
 
-function fileToImageData(file) {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        const url = URL.createObjectURL(file);
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = img.naturalWidth;
-            canvas.height = img.naturalHeight;
-            const ctx = canvas.getContext('2d', { willReadFrequently: true });
-            ctx.drawImage(img, 0, 0);
-            URL.revokeObjectURL(url);
-            try { resolve(ctx.getImageData(0, 0, canvas.width, canvas.height)); }
-            catch (e) { reject(e); }
-        };
-        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not load that image.')); };
-        img.src = url;
-    });
-}
-
+// Photo-upload fallback: decode a still image with the same engine.
 async function handlePhotoUpload(event) {
     const file = event.target.files[0];
     event.target.value = '';
     if (!file) return;
 
-    try { await window.zxingReady; }
-    catch (e) {
-        alert("Scanner engine isn't ready yet - please wait a moment and try again.");
+    if (!window.Html5Qrcode) {
+        alert("Scanner engine isn't ready yet - please try again.");
         return;
     }
 
@@ -770,20 +704,28 @@ async function handlePhotoUpload(event) {
     const prevStatus = statusEl.textContent;
     statusEl.textContent = 'Reading photo...';
 
+    const tmpId = '__file_scan_tmp';
+    let tmp = document.getElementById(tmpId);
+    if (!tmp) {
+        tmp = document.createElement('div');
+        tmp.id = tmpId;
+        tmp.style.display = 'none';
+        document.body.appendChild(tmp);
+    }
+
+    const fileScanner = new Html5Qrcode(tmpId, {
+        formatsToSupport: [
+            Html5QrcodeSupportedFormats.QR_CODE,
+            Html5QrcodeSupportedFormats.CODE_128
+        ],
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+        verbose: false
+    });
+
     try {
-        const imageData = await fileToImageData(file);
-        const results = await window.zxingReadBarcodes(imageData, {
-            formats: window.ZXING_BARCODE_FORMATS,
-            tryHarder: true,   // OK for a one-shot photo
-            maxNumberOfSymbols: 1
-        });
+        const decodedText = await fileScanner.scanFile(file, false);
+        const text = cleanCode(decodedText);
 
-        if (!results || !results.length) {
-            alert("No barcode or QR code could be found in that photo. Try a clearer, closer shot.");
-            return;
-        }
-
-        const text = results[0].text;
         if (activeFieldId === 'scan_serial') {
             if (scanner) scanner.pause();
             onSerialScanned(text);
@@ -793,8 +735,9 @@ async function handlePhotoUpload(event) {
         }
     } catch (err) {
         console.error(err);
-        alert("Could not read that photo. Please try again.");
+        alert("No barcode or QR code could be found in that photo. Try a clearer, closer shot.");
     } finally {
+        try { await fileScanner.clear(); } catch (e) {}
         statusEl.textContent = prevStatus;
     }
 }
@@ -812,30 +755,25 @@ async function startScanner() {
     document.getElementById('ui_mode').textContent = cfg.scanMode + " Mode";
 
     try {
-        await window.zxingReady;   // wait until the WASM engine is ready
-
         if (!scanner) {
-            const videoEl = document.getElementById('scanner-video');
-            const canvasEl = document.getElementById('scanner-canvas');
-            scanner = new MultiFormatScanner(videoEl, canvasEl, (text) => {
+            scanner = new MultiFormatScanner('reader', (text) => {
                 if (activeFieldId === 'scan_serial') { scanner.pause(); onSerialScanned(text); }
                 else { document.getElementById(activeFieldId).value = text; scanner.resume(); }
             });
         }
-
         await scanner.start();
         document.getElementById("scan_engine_status").textContent = "Camera ready";
     } catch (err) {
         console.error(err);
         document.getElementById("scan_engine_status").textContent = "Camera unavailable";
-        alert(err.message || "Unable to start the scanner. Check camera permissions.");
+        alert((err && err.message) || "Unable to start the scanner. Check camera permissions.");
     }
 }
 
 function setNextField(id) {
     promptModal.hide();
     activeFieldId = id;
-    document.querySelectorAll('#scanner_section input').forEach(i => i.classList.remove('active-scan-field'));
+    document.querySelectorAll('#scan_serial, #scan_imei, #scan_mac').forEach(i => i.classList.remove('active-scan-field'));
     document.getElementById(id).classList.add('active-scan-field');
     if (scanner) scanner.resume();
 }
@@ -866,7 +804,7 @@ function saveData() {
                 document.getElementById('scan_imei').value = '';
                 document.getElementById('scan_mac').value = '';
                 activeFieldId = 'scan_serial';
-                document.querySelectorAll('#scanner_section input').forEach(i => i.classList.remove('active-scan-field'));
+                document.querySelectorAll('#scan_serial, #scan_imei, #scan_mac').forEach(i => i.classList.remove('active-scan-field'));
                 document.getElementById('scan_serial').classList.add('active-scan-field');
                 document.getElementById('btn_manual_save').disabled = true;
                 if (scanner) scanner.resume();
