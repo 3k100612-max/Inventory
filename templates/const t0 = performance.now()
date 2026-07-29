@@ -48,7 +48,7 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            width: 70%;
+            width: 55%;
             aspect-ratio: 1 / 1;
             max-width: 280px;
             border: 3px solid rgba(13,110,253,0.9);
@@ -1022,7 +1022,7 @@ async function onSerialScanned(text) {
         }
 
         if (timestamp === undefined) timestamp = performance.now();
-        if (timestamp - this._lastDecode < 90) {
+        if (timestamp - this._lastDecode < 60) {
             requestAnimationFrame(this._loop);
             return;
         }
@@ -1051,7 +1051,7 @@ async function onSerialScanned(text) {
                 const imageData = this.ctx.getImageData(0, 0, targetSize, targetSize);
 
                 this._frameCount++;
-                const useTryHarder = this._frameCount % 4 === 0;
+                const useTryHarder = this._frameCount % 8 === 0; // full sweep less often — it's the expensive one
                 const formats = useTryHarder ? window.ZXING_ALL_FORMATS : window.ZXING_FAST_FORMATS;
 
                 const results = await window.zxingReadBarcodes(imageData, {
