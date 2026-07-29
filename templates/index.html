@@ -613,16 +613,12 @@
                 : path
     });
 
-   window.ZXING_ALL_FORMATS = [
-    "Aztec","Codabar","Code39","Code93","Code128","DataMatrix",
-    "EAN8","EAN13","ITF","MicroQRCode","PDF417","QRCode",
-    "DataBar","DataBarExpanded","UPCA","UPCE"
-];
+   
 
 // Formats actually used on asset tags — decoding 4 formats instead of 16
 // is roughly 3-4x less wasm work per frame. Used on the fast path;
 // the full list above is still tried periodically as a fallback.
-window.ZXING_FAST_FORMATS = ["QRCode", "Code128", "Code39", "DataMatrix"];
+window.ZXING_FAST_FORMATS = ["QRCode", "Code128", "Code39", "DataMatrix", "EAN13", "EAN8", "UPCA", "UPCE"];
     window.zxingReadBarcodes = readBarcodes;
     window.zxingReady = Promise.resolve();MultiFormatScanner
 
@@ -1038,10 +1034,11 @@ async function onSerialScanned(text) {
             // Cap the working resolution regardless of camera resolution —
             // decode time scales with pixel count, and 640px is plenty for
             // a barcode filling the scan box.
-            const targetSize = Math.min(cropSize, 640);
+            const targetSize = Math.min(cropSize, 900);
 
             this.canvas.width = targetSize;
             this.canvas.height = targetSize;
+            this.ctx.imageSmoothingEnabled = false; // smoothing blurs bars during downscale — kills barcode contrast
             this.ctx.drawImage(this.video, sx, sy, cropSize, cropSize, 0, 0, targetSize, targetSize);
 
             try {
