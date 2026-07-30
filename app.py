@@ -158,8 +158,8 @@ def load_user(uid):
 
 
 # ---------------- SCANNING RULES ----------------
-DEVICE_TYPES = ["Laptop", "Mobile", "Monitor", "Printer", "Other"]
-DEPARTMENTS  = ["IT", "FINANCE", "PROCUREMENT", "Other"]
+DEVICE_TYPES = ["Laptop", "Mobile", "Monitor", "Printer", "Docking Station","Headset","Other"]
+DEPARTMENTS  = ["IT", "FINANCE", "PROCUREMENT", "Employee Services" ,"Other"]
 STATUSES     = ["In Stock", "Loaned", "In Use", "Repair", "Retired"]
 
 SUBSTATUS_RULES = {
