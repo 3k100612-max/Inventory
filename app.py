@@ -588,6 +588,99 @@ def get_scan(scan_id):
         }
     })
 
+# ---------------- ADMIN: ADD RECORD ----------------
+@app.route('/scan/add', methods=['POST'])
+@login_required
+def add_scan():
+    if not current_user.is_admin:
+        return jsonify({
+            "status": "error",
+            "message": "Admin only"
+        }), 403
+
+    d = request.get_json() or {}
+
+    code = sanitize(d.get("code"))
+    if not code:
+        return jsonify({
+            "status": "error",
+            "message": "Serial / Code is required."
+        }), 400
+
+    if not CODE_PATTERN.fullmatch(code):
+        return jsonify({
+            "status": "error",
+            "message": "Invalid barcode characters."
+        }), 400
+
+    status_value = sanitize(d.get("status"))
+    if status_value not in STATUSES:
+        return jsonify({
+            "status": "error",
+            "message": "Invalid status."
+        }), 400
+
+    substatus_value = sanitize(d.get("substatus"))
+    valid_substatuses = SUBSTATUS_RULES.get(status_value, [])
+
+    # Automatically enforce fixed substatuses.
+    if status_value == "Loaned":
+        substatus_value = "Service Unit"
+    elif status_value == "Repair":
+        substatus_value = "Ongoing"
+    elif status_value == "In Use":
+        substatus_value = "Active"
+    elif valid_substatuses:
+        if substatus_value not in valid_substatuses:
+            return jsonify({
+                "status": "error",
+                "message": (
+                    f"Substatus must be one of: "
+                    f"{', '.join(valid_substatuses)}."
+                )
+            }), 400
+    else:
+        substatus_value = None
+
+    device_type = sanitize(d.get("device_type")) or "Other"
+    department = sanitize(d.get("department"))
+
+    try:
+        scan = InventoryScan(
+            code=code,
+            imei=sanitize(d.get("imei")),
+            mac_address=sanitize(d.get("mac_address")),
+            device_type=device_type,
+            department=department,
+            status=status_value,
+            substatus=substatus_value,
+            person_name=sanitize(d.get("person_name")),
+            employee_id=sanitize(d.get("employee_id")),
+            email=sanitize(d.get("email"), 120),
+            purchase_date=parse_dt(d.get("purchase_date")),
+            return_date=parse_dt(d.get("return_date")),
+            end_of_cycle=parse_dt(d.get("end_of_cycle")),
+            reason=sanitize(d.get("reason"), 500),
+            notes=sanitize(d.get("notes"), 1000),
+            is_flagged=compute_is_flagged(code, status_value)
+        )
+
+        db.session.add(scan)
+        db.session.commit()
+
+        return jsonify({
+            "status": "success",
+            "id": scan.id,
+            "is_flagged": scan.is_flagged
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
 
 # ---------------- EDIT: update ----------------
 @app.route('/scan/<int:scan_id>/edit', methods=['POST'])
