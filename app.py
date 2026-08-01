@@ -340,7 +340,19 @@ def session_start():
 
     dept = sanitize(d.get('dept'))
     if dept == 'Other':
-        dept = sanitize_title(d.get('otherDept')) or 'Other'
+        other_dept = sanitize(d.get('otherDept'))
+        if not other_dept:
+            return jsonify({"ok": False, "error": "Please specify a department."}), 400
+
+        other_dept_upper = other_dept.upper()
+        existing_upper = [x.upper() for x in DEPARTMENTS if x != 'Other']
+        if other_dept_upper in existing_upper:
+            return jsonify({
+                "ok": False,
+                "error": f"'{other_dept_upper}' already exists in the department list. Please select it instead."
+            }), 400
+
+        dept = other_dept_upper
 
     status = sanitize(d.get('status'))
     if status not in STATUSES:
