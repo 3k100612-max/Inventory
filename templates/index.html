@@ -391,6 +391,30 @@ let scanner, activeFieldId = 'scan_serial', cfg = {}, promptModal,
 
 const EXISTING_DEPARTMENTS = {{ departments | tojson }};
 
+const DEPARTMENT_ALIASES = {
+    "HR": "Employee Services",
+    "HUMAN RESOURCES": "Employee Services",
+    "IT": "IT",
+    "INFORMATION TECHNOLOGY": "IT",
+    "FIN": "FINANCE",
+    "PROC": "PROCUREMENT",
+    "PROCUREMENTS": "PROCUREMENT",
+};
+
+function getDepartmentMatch(value) {
+    const typed = value.trim().toUpperCase();
+    if (!typed) return null;
+
+    if (DEPARTMENT_ALIASES[typed]) {
+        return DEPARTMENT_ALIASES[typed];
+    }
+
+    const existing = EXISTING_DEPARTMENTS.find(
+        d => d !== 'Other' && d.toUpperCase() === typed
+    );
+    return existing || null;
+}
+
 function isDepartmentDuplicate(value) {
     const typed = value.trim().toUpperCase();
     if (!typed) return false;
@@ -403,14 +427,19 @@ function handleOtherDeptInput() {
     const input = document.getElementById('m_other_dept');
     const warning = document.getElementById('other_dept_warning');
 
-    // Uppercase as they type, preserving cursor position
     const cursorPos = input.selectionStart;
     input.value = input.value.toUpperCase();
     input.setSelectionRange(cursorPos, cursorPos);
 
-    const duplicate = isDepartmentDuplicate(input.value);
-    warning.style.display = duplicate ? 'block' : 'none';
-    input.classList.toggle('is-invalid', duplicate);
+    const match = getDepartmentMatch(input.value);
+    if (match) {
+        warning.textContent = `This matches an existing department: "${match}". Please select it from the list above.`;
+        warning.style.display = 'block';
+        input.classList.add('is-invalid');
+    } else {
+        warning.style.display = 'none';
+        input.classList.remove('is-invalid');
+    }
 }
 
 // Cut off everything from the first ";" onward, then trim.
@@ -531,9 +560,12 @@ async function confirmSetup() {
 
     const deptSelect = document.getElementById('m_dept').value;
     const otherDeptVal = document.getElementById('m_other_dept').value.trim();
-    if (deptSelect === 'Other' && isDepartmentDuplicate(otherDeptVal)) {
-        alert(`'${otherDeptVal}' already exists in the department list. Please select it instead.`);
-        return;
+    if (deptSelect === 'Other') {
+        const match = getDepartmentMatch(otherDeptVal);
+        if (match) {
+            alert(`'${otherDeptVal}' matches an existing department ("${match}"). Please select it instead.`);
+            return;
+        }
     }
 
     try {
