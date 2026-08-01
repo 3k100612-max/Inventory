@@ -393,6 +393,25 @@ function cleanCode(text) {
     return String(text).split(';')[0].trim();
 }
 
+// Sets a <select>'s value, injecting a matching <option> first if the
+// value doesn't already exist among the options (e.g. a custom "Other"
+// value that was typed in at scan time, like a custom device type or
+// department). Without this, select.value silently falls back to the
+// first option and the real saved value never shows up in the form.
+function setSelectValuePreserveCustom(selectId, value) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    const v = (value === null || value === undefined) ? '' : String(value);
+    const hasOption = Array.from(select.options).some(o => o.value === v);
+    if (!hasOption && v !== '') {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = v;
+        select.appendChild(opt);
+    }
+    select.value = v;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     promptModal = new bootstrap.Modal(document.getElementById('promptModal'));
     confirmModalInstance = new bootstrap.Modal(document.getElementById('confirmModal'));
@@ -915,10 +934,10 @@ async function openEditModal(scanId) {
 
         document.getElementById('e_id').value = s.id;
         document.getElementById('e_code').value = s.code;
-        document.getElementById('e_device').value = s.device_type;
+        setSelectValuePreserveCustom('e_device', s.device_type);
         document.getElementById('e_person_name').value = s.person_name;
         document.getElementById('e_employee_id').value = s.employee_id;
-        document.getElementById('e_department').value = s.department;
+        setSelectValuePreserveCustom('e_department', s.department);
         document.getElementById('e_imei').value = s.imei;
         document.getElementById('e_mac_address').value = s.mac_address;
         document.getElementById('e_status').value = s.status;
