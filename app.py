@@ -70,7 +70,6 @@ login_manager.login_view = 'login'
 
 
 # --- SECURITY HEADERS ---
-# --- SECURITY HEADERS ---
 @app.after_request
 def add_security_headers(resp):
     resp.headers["Content-Security-Policy"] = (
@@ -265,6 +264,23 @@ def parse_dt(s):
         return datetime.strptime(s, '%Y-%m-%d').date() if s else None
     except Exception:
         return None
+
+
+def compute_is_flagged(code, status, exclude_id=None):
+    """
+    Shared flag logic: a code becomes flagged once it has accumulated
+    3 or more 'Repair' status records (including the one being saved).
+    Any other status clears the flag.
+    """
+    if status != "Repair":
+        return False
+
+    query = InventoryScan.query.filter_by(code=code, status="Repair")
+    if exclude_id is not None:
+        query = query.filter(InventoryScan.id != exclude_id)
+
+    repair_count = query.count()
+    return (repair_count + 1) >= 3
 
 
 # ---------------- AUTH / PAGES ----------------
@@ -477,13 +493,7 @@ def scanned():
             "message": "A reason is required to reactivate a Retired unit."
         }), 400
 
-    is_flagged = False
-    if cfg["status"] == "Repair":
-        repair_count = InventoryScan.query.filter_by(
-            code=code, status="Repair"
-        ).count()
-        if repair_count + 1 >= 3:
-            is_flagged = True
+    is_flagged = compute_is_flagged(code, cfg["status"])
 
     try:
         s = InventoryScan(
@@ -540,7 +550,8 @@ def get_scan(scan_id):
             "return_date": s.return_date.strftime('%Y-%m-%d') if s.return_date else "",
             "end_of_cycle": s.end_of_cycle.strftime('%Y-%m-%d') if s.end_of_cycle else "",
             "reason": s.reason or "",
-            "notes": s.notes or ""
+            "notes": s.notes or "",
+            "is_flagged": s.is_flagged
         }
     })
 
@@ -591,8 +602,14 @@ def edit_scan(scan_id):
     else:
         s.reason = sanitize(d.get('reason'), 500)
 
+    new_code = sanitize(d.get('code')) or s.code
+
+    # Recompute the flag against the (possibly new) code/status combo,
+    # excluding this row itself from its own repair count.
+    s.is_flagged = compute_is_flagged(new_code, status_value, exclude_id=s.id)
+
     try:
-        s.code = sanitize(d.get('code')) or s.code
+        s.code = new_code
         s.imei = sanitize(d.get('imei'))
         s.mac_address = sanitize(d.get('mac_address'))
         s.device_type = sanitize(d.get('device_type')) or s.device_type
@@ -608,7 +625,7 @@ def edit_scan(scan_id):
         s.notes = sanitize(d.get('notes'), 1000)
 
         db.session.commit()
-        return jsonify({"status": "success", "id": s.id})
+        return jsonify({"status": "success", "id": s.id, "is_flagged": s.is_flagged})
 
     except Exception as e:
         db.session.rollback()
