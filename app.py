@@ -818,7 +818,10 @@ def import_excel():
                     end_of_cycle=parse_dt(str(row[13])[:10]) if row[13] else None,
                     reason=row[14],
                     notes=row[15],
-                    timestamp=(timestamp if isinstance(timestamp, datetime) else datetime.utcnow())
+                    timestamp=(timestamp if isinstance(timestamp, datetime) else datetime.utcnow()),
+                    # compute_is_flagged() queries the DB with autoflush, so it correctly
+                    # sees prior rows from earlier in this same import batch too.
+                    is_flagged=compute_is_flagged(serial, status_value)
                 )
                 db.session.add(scan)
                 imported += 1
