@@ -198,7 +198,10 @@
                             <option value="PROCUREMENT">Procurement</option>
                             <option value="Other">Other</option>
                         </select>
-                        <input type="text" id="m_other_dept" class="form-control mt-2 border-primary" style="display:none;" placeholder="Specify Dept">
+                        <input type="text" id="m_other_dept" class="form-control mt-2 border-primary" style="display:none;" placeholder="Specify Dept" oninput="handleOtherDeptInput()">
+                        <div id="other_dept_warning" class="small text-danger mt-1" style="display:none;">
+                            This department already exists. Please select it from the list above.
+                        </div>
                     </div>
                 </div>
                 <div class="mb-3">
@@ -386,6 +389,30 @@
 let scanner, activeFieldId = 'scan_serial', cfg = {}, promptModal,
     confirmModalInstance, pendingIdentifiers = [], pendingReason = null;
 
+const EXISTING_DEPARTMENTS = {{ departments | tojson }};
+
+function isDepartmentDuplicate(value) {
+    const typed = value.trim().toUpperCase();
+    if (!typed) return false;
+    return EXISTING_DEPARTMENTS
+        .filter(d => d !== 'Other')
+        .some(d => d.toUpperCase() === typed);
+}
+
+function handleOtherDeptInput() {
+    const input = document.getElementById('m_other_dept');
+    const warning = document.getElementById('other_dept_warning');
+
+    // Uppercase as they type, preserving cursor position
+    const cursorPos = input.selectionStart;
+    input.value = input.value.toUpperCase();
+    input.setSelectionRange(cursorPos, cursorPos);
+
+    const duplicate = isDepartmentDuplicate(input.value);
+    warning.style.display = duplicate ? 'block' : 'none';
+    input.classList.toggle('is-invalid', duplicate);
+}
+
 // Cut off everything from the first ";" onward, then trim.
 // e.g. "ABC123;extra;stuff" -> "ABC123"
 function cleanCode(text) {
@@ -499,6 +526,13 @@ async function confirmSetup() {
 
     if (['In Stock', 'Retired'].includes(selectedStatus) && !selectedSubstatus) {
         alert('Please select a substatus.');
+        return;
+    }
+
+    const deptSelect = document.getElementById('m_dept').value;
+    const otherDeptVal = document.getElementById('m_other_dept').value.trim();
+    if (deptSelect === 'Other' && isDepartmentDuplicate(otherDeptVal)) {
+        alert(`'${otherDeptVal}' already exists in the department list. Please select it instead.`);
         return;
     }
 
