@@ -2,6 +2,7 @@ import os, sys, html, re
 from pathlib import Path
 from datetime import datetime
 from flask import (
+
     Flask, render_template, request, jsonify, redirect,
     url_for, flash, session as flask_session, send_file
 )
@@ -159,6 +160,15 @@ def load_user(uid):
 # ---------------- SCANNING RULES ----------------
 DEVICE_TYPES = ["Laptop", "Mobile", "Monitor", "Printer", "Docking Station","Headset","Other"]
 DEPARTMENTS  = ["IT", "FINANCE", "PROCUREMENT", "Employee Services" ,"Other"]
+DEPARTMENT_ALIASES = {
+    "HR": "Employee Services",
+    "HUMAN RESOURCES": "Employee Services",
+    "IT": "IT",
+    "INFORMATION TECHNOLOGY": "IT",
+    "FIN": "FINANCE",
+    "PROC": "PROCUREMENT",
+    "PROCUREMENTS": "PROCUREMENT",
+}
 STATUSES     = ["In Stock", "Loaned", "In Use", "Repair", "Retired"]
 
 SUBSTATUS_RULES = {
@@ -345,7 +355,18 @@ def session_start():
             return jsonify({"ok": False, "error": "Please specify a department."}), 400
 
         other_dept_upper = other_dept.upper()
+
+        # Resolve known aliases (e.g. "HR" -> "Employee Services") first
+        canonical = DEPARTMENT_ALIASES.get(other_dept_upper)
+
         existing_upper = [x.upper() for x in DEPARTMENTS if x != 'Other']
+
+        if canonical:
+            return jsonify({
+                "ok": False,
+                "error": f"'{other_dept_upper}' matches an existing department ('{canonical}'). Please select it instead."
+            }), 400
+
         if other_dept_upper in existing_upper:
             return jsonify({
                 "ok": False,
