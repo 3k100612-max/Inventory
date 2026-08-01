@@ -106,18 +106,47 @@
     </div>
 
     <div class="card p-4">
-        <h5 class="mb-3 fw-bold">Recent Activity</h5>
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <h5 class="fw-bold mb-0">Recent Activity</h5>
+            <div class="d-flex gap-2 flex-wrap">
+                <input type="text" id="filter_search" class="form-control form-control-sm"
+                       placeholder="Search code, employee, dept..." style="width: 220px;" oninput="applyTableFilters()">
+                <select id="filter_status" class="form-select form-select-sm" style="width: 140px;" onchange="applyTableFilters()">
+                    <option value="">All Statuses</option>
+                    {% for st in statuses %}
+                    <option value="{{ st }}">{{ st }}</option>
+                    {% endfor %}
+                </select>
+                <select id="filter_device" class="form-select form-select-sm" style="width: 150px;" onchange="applyTableFilters()">
+                    <option value="">All Device Types</option>
+                    {% for dt in device_types %}
+                    <option value="{{ dt }}">{{ dt }}</option>
+                    {% endfor %}
+                </select>
+                <button class="btn btn-sm btn-outline-secondary" onclick="clearTableFilters()">Clear</button>
+            </div>
+        </div>
         <div class="table-responsive">
-            <table class="table table-hover align-middle">
+            <table class="table table-hover align-middle" id="activity_table">
                 <thead class="table-light">
                     <tr>
-                        <th>Time</th><th>Item Info</th><th>Status</th>
-                        <th>Substatus</th><th>Employee</th><th>Action</th>
+                        <th class="sortable-th" data-sort="time" style="cursor:pointer;">Time <span class="sort-arrow"></span></th>
+                        <th class="sortable-th" data-sort="code" style="cursor:pointer;">Item Info <span class="sort-arrow"></span></th>
+                        <th class="sortable-th" data-sort="status" style="cursor:pointer;">Status <span class="sort-arrow"></span></th>
+                        <th>Substatus</th>
+                        <th class="sortable-th" data-sort="employee" style="cursor:pointer;">Employee <span class="sort-arrow"></span></th>
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody id="history_body">
                     {% for s in scans %}
-                    <tr id="row-{{ s.id }}">
+                    <tr id="row-{{ s.id }}"
+                        data-time="{{ s.timestamp.strftime('%Y-%m-%dT%H:%M:%S') }}"
+                        data-code="{{ s.code }}"
+                        data-status="{{ s.status }}"
+                        data-device="{{ s.device_type }}"
+                        data-employee="{{ s.person_name or '' }}"
+                        data-dept="{{ s.department or '' }}">
                         <td class="small text-muted">{{ s.timestamp.strftime('%H:%M') }}</td>
                         <td>
                             <div class="fw-bold">
@@ -153,6 +182,9 @@
                     {% endfor %}
                 </tbody>
             </table>
+            <div id="no_results_msg" class="text-center text-muted py-3" style="display:none;">
+                No matching records found.
+            </div>
         </div>
     </div>
 </div>
@@ -904,8 +936,10 @@ function saveData() {
                 if (scanner) scanner.resume();
 
                 const table = document.getElementById('history_body');
+                const nowIso = new Date().toISOString().slice(0, 19);
                 const newRow = `
-                    <tr>
+                    <tr data-time="${nowIso}" data-code="${payload.code}" data-status="${payload.status}"
+                        data-device="${payload.device}" data-employee="${payload.user}" data-dept="${payload.dept || ''}">
                         <td class="small text-muted">Just Now</td>
                         <td>
                             <div class="fw-bold">${payload.code}</div>
@@ -917,6 +951,7 @@ function saveData() {
                         <td>-</td>
                     </tr>`;
                 table.insertAdjacentHTML('afterbegin', newRow);
+                applyTableFilters();
             } else {
                 location.reload();
             }
@@ -1065,6 +1100,84 @@ async function saveEditData() {
         alert("Network error while saving.");
     }
 }
+
+let currentSort = { key: null, asc: true };
+
+function applyTableFilters() {
+    const search = document.getElementById('filter_search').value.trim().toLowerCase();
+    const statusFilter = document.getElementById('filter_status').value;
+    const deviceFilter = document.getElementById('filter_device').value;
+
+    const rows = document.querySelectorAll('#history_body tr');
+    let visibleCount = 0;
+
+    rows.forEach(row => {
+        const code = (row.dataset.code || '').toLowerCase();
+        const employee = (row.dataset.employee || '').toLowerCase();
+        const dept = (row.dataset.dept || '').toLowerCase();
+        const status = row.dataset.status || '';
+        const device = row.dataset.device || '';
+
+        const matchesSearch = !search || code.includes(search) || employee.includes(search) || dept.includes(search);
+        const matchesStatus = !statusFilter || status === statusFilter;
+        const matchesDevice = !deviceFilter || device === deviceFilter;
+
+        const visible = matchesSearch && matchesStatus && matchesDevice;
+        row.style.display = visible ? '' : 'none';
+        if (visible) visibleCount++;
+    });
+
+    document.getElementById('no_results_msg').style.display = visibleCount === 0 ? 'block' : 'none';
+}
+
+function clearTableFilters() {
+    document.getElementById('filter_search').value = '';
+    document.getElementById('filter_status').value = '';
+    document.getElementById('filter_device').value = '';
+    applyTableFilters();
+}
+
+function sortTable(key) {
+    const tbody = document.getElementById('history_body');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+
+    if (currentSort.key === key) {
+        currentSort.asc = !currentSort.asc;
+    } else {
+        currentSort.key = key;
+        currentSort.asc = true;
+    }
+
+    rows.sort((a, b) => {
+        let valA = a.dataset[key] || '';
+        let valB = b.dataset[key] || '';
+        if (key === 'time') {
+            valA = new Date(valA).getTime();
+            valB = new Date(valB).getTime();
+        } else {
+            valA = valA.toLowerCase();
+            valB = valB.toLowerCase();
+        }
+        if (valA < valB) return currentSort.asc ? -1 : 1;
+        if (valA > valB) return currentSort.asc ? 1 : -1;
+        return 0;
+    });
+
+    rows.forEach(row => tbody.appendChild(row));
+
+    document.querySelectorAll('.sortable-th').forEach(th => {
+        const arrow = th.querySelector('.sort-arrow');
+        if (th.dataset.sort === key) {
+            arrow.textContent = currentSort.asc ? '▲' : '▼';
+        } else {
+            arrow.textContent = '';
+        }
+    });
+}
+
+document.querySelectorAll('.sortable-th').forEach(th => {
+    th.addEventListener('click', () => sortTable(th.dataset.sort));
+});
 
 async function uploadExcel() {
     const file = document.getElementById("excelFile").files[0];
