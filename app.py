@@ -159,10 +159,10 @@ def load_user(uid):
 
 # ---------------- SCANNING RULES ----------------
 DEVICE_TYPES = ["Laptop", "Mobile", "Monitor", "Printer", "Docking Station","Headset","Other"]
-DEPARTMENTS  = ["IT", "FINANCE", "PROCUREMENT", "Employee Services" ,"Other"]
+DEPARTMENTS  = ["IT", "FINANCE", "PROCUREMENT", "EMPLOYEE SERVICES" ,"Other"]
 DEPARTMENT_ALIASES = {
-    "HR": "Employee Services",
-    "HUMAN RESOURCES": "Employee Services",
+    "HR": "EMPLOYEE SERVICES",
+    "HUMAN RESOURCES": "EMPLOYEE SERVICES",
     "IT": "IT",
     "INFORMATION TECHNOLOGY": "IT",
     "FIN": "FINANCE",
@@ -589,18 +589,19 @@ def get_scan(scan_id):
     })
 
 # ---------------- ADMIN: ADD RECORD ----------------
+# ---------------- ADMIN: ADD RECORD ----------------
 @app.route('/scan/add', methods=['POST'])
 @login_required
 def add_scan():
     if not current_user.is_admin:
         return jsonify({
             "status": "error",
-            "message": "Admin only"
+            "message": "Admin only."
         }), 403
 
     d = request.get_json() or {}
 
-    code = sanitize(d.get("code"))
+    code = sanitize(d.get("code"), 100)
     if not code:
         return jsonify({
             "status": "error",
@@ -613,55 +614,105 @@ def add_scan():
             "message": "Invalid barcode characters."
         }), 400
 
-    status_value = sanitize(d.get("status"))
+    device_type = sanitize(d.get("device_type"), 100)
+    if not device_type or device_type == "Other":
+        return jsonify({
+            "status": "error",
+            "message": "A valid device type is required."
+        }), 400
+
+    department = sanitize(d.get("department"), 100)
+
+    # Disallow saving literal "Other" because the UI should send custom text.
+    if department == "Other":
+        return jsonify({
+            "status": "error",
+            "message": "Please specify a department instead of using Other."
+        }), 400
+
+    # Reject names that duplicate one of the canonical existing departments.
+    if department:
+        department_upper = department.upper()
+
+        canonical_department = DEPARTMENT_ALIASES.get(department_upper)
+        known_departments = {
+            item.upper()
+            for item in DEPARTMENTS
+            if item != "Other"
+        }
+
+        if canonical_department:
+            return jsonify({
+                "status": "error",
+                "message": (
+                    f"'{department}' matches the existing department "
+                    f"'{canonical_department}'. Select it from the list."
+                )
+            }), 400
+
+        if department_upper in known_departments:
+            return jsonify({
+                "status": "error",
+                "message": (
+                    f"'{department}' already exists in the department list. "
+                    "Select it from the list."
+                )
+            }), 400
+
+        # Keep custom department format consistent with your scan session flow.
+        if department_upper not in known_departments:
+            department = department_upper
+
+    status_value = sanitize(d.get("status"), 50)
     if status_value not in STATUSES:
         return jsonify({
             "status": "error",
             "message": "Invalid status."
         }), 400
 
-    substatus_value = sanitize(d.get("substatus"))
+    substatus_value = sanitize(d.get("substatus"), 50)
     valid_substatuses = SUBSTATUS_RULES.get(status_value, [])
 
-    # Automatically enforce fixed substatuses.
     if status_value == "Loaned":
         substatus_value = "Service Unit"
+
     elif status_value == "Repair":
         substatus_value = "Ongoing"
+
     elif status_value == "In Use":
         substatus_value = "Active"
-    elif valid_substatuses:
-        if substatus_value not in valid_substatuses:
-            return jsonify({
-                "status": "error",
-                "message": (
-                    f"Substatus must be one of: "
-                    f"{', '.join(valid_substatuses)}."
-                )
-            }), 400
-    else:
-        substatus_value = None
 
-    device_type = sanitize(d.get("device_type")) or "Other"
-    department = sanitize(d.get("department"))
+    elif valid_substatuses and substatus_value not in valid_substatuses:
+        return jsonify({
+            "status": "error",
+            "message": (
+                f"Substatus must be one of: "
+                f"{', '.join(valid_substatuses)}."
+            )
+        }), 400
 
     try:
         scan = InventoryScan(
             code=code,
-            imei=sanitize(d.get("imei")),
-            mac_address=sanitize(d.get("mac_address")),
+            imei=sanitize(d.get("imei"), 100),
+            mac_address=sanitize(d.get("mac_address"), 100),
+
             device_type=device_type,
             department=department,
             status=status_value,
             substatus=substatus_value,
-            person_name=sanitize(d.get("person_name")),
-            employee_id=sanitize(d.get("employee_id")),
+
+            person_name=sanitize(d.get("person_name"), 100),
+            employee_id=sanitize(d.get("employee_id"), 50),
             email=sanitize(d.get("email"), 120),
+
             purchase_date=parse_dt(d.get("purchase_date")),
             return_date=parse_dt(d.get("return_date")),
             end_of_cycle=parse_dt(d.get("end_of_cycle")),
+
             reason=sanitize(d.get("reason"), 500),
             notes=sanitize(d.get("notes"), 1000),
+
             is_flagged=compute_is_flagged(code, status_value)
         )
 
@@ -676,11 +727,12 @@ def add_scan():
 
     except Exception as e:
         db.session.rollback()
+        print(f"Admin add record error: {e}", file=sys.stderr)
+
         return jsonify({
             "status": "error",
-            "message": str(e)
+            "message": "Unable to add the record."
         }), 500
-
 
 # ---------------- EDIT: update ----------------
 @app.route('/scan/<int:scan_id>/edit', methods=['POST'])
