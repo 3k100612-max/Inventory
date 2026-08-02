@@ -341,6 +341,12 @@
                             <option value="Headset">Headset</option>
                             <option value="Other">Other</option>
                         </select>
+
+                        <input type="text"
+                               id="a_other_device"
+                               class="form-control mt-2 border-primary"
+                               placeholder="Specify device type"
+                               style="display:none;">
                     </div>
 
                     <div class="col-md-6 mb-3">
@@ -352,7 +358,17 @@
                             <option value="Employee Services">Employee Services</option>
                             <option value="Other">Other</option>
                         </select>
-                    </div>
+                        <input type="text"
+                           id="a_other_department"
+                           class="form-control mt-2 border-primary"
+                           placeholder="Specify department"
+                           style="display:none;"
+                           oninput="handleAddOtherDepartmentInput()"/>
+                
+                        <div id="a_other_department_warning"
+                           class="small text-danger mt-1"
+                           style="display:none;"></div>
+                        </div>
 
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold">Status</label>
@@ -447,23 +463,51 @@
                 <div class="row bg-light p-3 rounded mb-4 border">
                     <div class="col-md-6 mb-3"><label class="form-label fw-bold">Serial / Code</label><input type="text" id="e_code" class="form-control"></div>
                     <div class="col-md-6 mb-3">
-                        <label class="form-label fw-bold">Device Type</label>
-                        <select id="e_device" class="form-select">
-                            <option value="Laptop">Laptop</option><option value="Mobile">Mobile</option>
-                            <option value="Monitor">Monitor</option><option value="Printer">Printer</option>
-                            <option value="Docking Station">Docking Station</option><option value="Headset">Headset</option>
-                            <option value="Other">Other</option>
-                        </select>
-                    </div>
+                    <label class="form-label fw-bold">Device Type</label>
+                    <select id="e_device"
+                            class="form-select"
+                            onchange="toggleEditOtherFields()">
+                        <option value="Laptop">Laptop</option>
+                        <option value="Mobile">Mobile</option>
+                        <option value="Monitor">Monitor</option>
+                        <option value="Printer">Printer</option>
+                        <option value="Docking Station">Docking Station</option>
+                        <option value="Headset">Headset</option>
+                        <option value="Other">Other</option>
+                    </select>
+                
+                    <input type="text"
+                           id="e_other_device"
+                           class="form-control mt-2 border-primary"
+                           placeholder="Specify device type"
+                           style="display:none;">
+                </div>
+
                     <div class="col-md-6 mb-3"><label class="form-label fw-bold">Employee Name</label><input type="text" id="e_person_name" class="form-control"></div>
                     <div class="col-md-6 mb-3"><label class="form-label fw-bold">Employee ID</label><input type="text" id="e_employee_id" class="form-control"></div>
                     <div class="col-md-6 mb-3">
-                        <label class="form-label fw-bold">Department</label>
-                        <select id="e_department" class="form-select">
-                            <option value="IT">IT</option><option value="FINANCE">FINANCE</option>
-                            <option value="PROCUREMENT">PROCUREMENT</option><option value="Other">Other</option>
-                        </select>
-                    </div>
+                    <label class="form-label fw-bold">Department</label>
+                    <select id="e_department"
+                            class="form-select"
+                            onchange="toggleEditOtherFields()">
+                        <option value="IT">IT</option>
+                        <option value="FINANCE">FINANCE</option>
+                        <option value="PROCUREMENT">PROCUREMENT</option>
+                        <option value="Employee Services">Employee Services</option>
+                        <option value="Other">Other</option>
+                    </select>
+                
+                    <input type="text"
+                           id="e_other_department"
+                           class="form-control mt-2 border-primary"
+                           placeholder="Specify department"
+                           style="display:none;"
+                           oninput="handleEditOtherDepartmentInput()">
+                
+                    <div id="e_other_department_warning"
+                         class="small text-danger mt-1"
+                         style="display:none;"></div>
+                </div>
                     <div class="col-md-6 mb-3"><label class="form-label fw-bold">IMEI</label><input type="text" id="e_imei" class="form-control"></div>
                     <div class="col-md-6 mb-3"><label class="form-label fw-bold">MAC Address</label><input type="text" id="e_mac_address" class="form-control"></div>
                 </div>
@@ -635,6 +679,7 @@ document.addEventListener('DOMContentLoaded', () => {
     editModalInstance = new bootstrap.Modal(document.getElementById('editModal'));
     toggleUI();
     updateAddSubstatusOptions();
+    toggleAddOtherFields();
     const el = document.getElementById('scan_engine_status');
     if (el) el.textContent = window.Html5Qrcode ? "Scanner engine ready" : "Scanner failed to load";
 });
@@ -1165,10 +1210,8 @@ async function openEditModal(scanId) {
 
         document.getElementById('e_id').value = s.id;
         document.getElementById('e_code').value = s.code;
-        setSelectValuePreserveCustom('e_device', s.device_type);
         document.getElementById('e_person_name').value = s.person_name;
         document.getElementById('e_employee_id').value = s.employee_id;
-        setSelectValuePreserveCustom('e_department', s.department);
         document.getElementById('e_imei').value = s.imei;
         document.getElementById('e_mac_address').value = s.mac_address;
         document.getElementById('e_status').value = s.status;
@@ -1178,8 +1221,25 @@ async function openEditModal(scanId) {
         document.getElementById('e_end_of_cycle').value = s.end_of_cycle;
         document.getElementById('e_email').value = s.email;
         document.getElementById('e_notes').value = s.notes;
+        if (isStandardDeviceType(s.device_type) && s.device_type !== 'Other') {
+        document.getElementById('e_device').value = s.device_type;
+        document.getElementById('e_other_device').value = '';
+        } else {
+            document.getElementById('e_device').value = 'Other';
+            document.getElementById('e_other_device').value = s.device_type || '';
+        }
+        
+        if (isStandardDepartment(s.department) && s.department !== 'Other') {
+            document.getElementById('e_department').value = s.department;
+            document.getElementById('e_other_department').value = '';
+        } else {
+            document.getElementById('e_department').value = 'Other';
+            document.getElementById('e_other_department').value = s.department || '';
+        }
+
 
         updateEditSubstatusOptions();
+        toggleEditOtherFields();
         document.getElementById('e_substatus').value = s.substatus;
 
         editModalInstance.show();
@@ -1191,45 +1251,94 @@ async function openEditModal(scanId) {
 
 async function saveEditData() {
     const status = document.getElementById('e_status').value;
-    if (editOriginalStatus === "Retired" && status === "In Use" &&
-        !document.getElementById('e_reason').value.trim()) {
+
+    const selectedDevice = document.getElementById('e_device').value;
+    const otherDevice = document.getElementById('e_other_device').value.trim();
+
+    const selectedDepartment = document.getElementById('e_department').value;
+    const otherDepartment = document.getElementById('e_other_department').value.trim();
+
+    if (selectedDevice === 'Other' && !otherDevice) {
+        alert("Please specify the device type.");
+        document.getElementById('e_other_device').focus();
+        return;
+    }
+
+    if (selectedDepartment === 'Other' && !otherDepartment) {
+        alert("Please specify the department.");
+        document.getElementById('e_other_department').focus();
+        return;
+    }
+
+    const departmentMatch = getDepartmentMatch(otherDepartment);
+
+    if (selectedDepartment === 'Other' && departmentMatch) {
+        alert(
+            `"${otherDepartment}" matches the existing department "${departmentMatch}". ` +
+            "Please select it from the list."
+        );
+        return;
+    }
+
+    if (
+        editOriginalStatus === "Retired" &&
+        status === "In Use" &&
+        !document.getElementById('e_reason').value.trim()
+    ) {
         alert("A reason is required to reactivate a Retired unit.");
         return;
     }
 
     const payload = {
         code: document.getElementById('e_code').value,
-        device_type: document.getElementById('e_device').value,
+
+        // Store the specified text, not "Other".
+        device_type: selectedDevice === 'Other' ? otherDevice : selectedDevice,
+        department: selectedDepartment === 'Other'
+            ? otherDepartment.toUpperCase()
+            : selectedDepartment,
+
         person_name: document.getElementById('e_person_name').value,
         employee_id: document.getElementById('e_employee_id').value,
-        department: document.getElementById('e_department').value,
         imei: document.getElementById('e_imei').value,
         mac_address: document.getElementById('e_mac_address').value,
+
         status: status,
         substatus: document.getElementById('e_substatus').value,
         reason: document.getElementById('e_reason').value,
+
         purchase_date: document.getElementById('e_purchase_date').value,
         return_date: document.getElementById('e_return_date').value,
         end_of_cycle: document.getElementById('e_end_of_cycle').value,
+
         email: document.getElementById('e_email').value,
         notes: document.getElementById('e_notes').value
     };
+
     const id = document.getElementById('e_id').value;
 
     try {
         const res = await fetch(`/scan/${id}/edit`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json'
+            },
             body: JSON.stringify(payload)
         });
+
         const data = await res.json();
-        if (data.status === "success") location.reload();
-        else alert(data.message || "Save failed.");
+
+        if (data.status === "success") {
+            location.reload();
+        } else {
+            alert(data.message || "Save failed.");
+        }
     } catch (err) {
         console.error(err);
         alert("Network error while saving.");
     }
 }
+
 
 let currentSort = { key: null, asc: true };
 
@@ -1360,12 +1469,41 @@ function updateAddSubstatusOptions() {
 
 async function saveAddedRecord() {
     const code = document.getElementById('a_code').value.trim();
+
+    const selectedDevice = document.getElementById('a_device_type').value;
+    const otherDevice = document.getElementById('a_other_device').value.trim();
+
+    const selectedDepartment = document.getElementById('a_department').value;
+    const otherDepartment = document.getElementById('a_other_department').value.trim();
+
     const status = document.getElementById('a_status').value;
     const substatus = document.getElementById('a_substatus').value;
 
     if (!code) {
         alert("Serial / Code is required.");
         document.getElementById('a_code').focus();
+        return;
+    }
+
+    if (selectedDevice === 'Other' && !otherDevice) {
+        alert("Please specify the device type.");
+        document.getElementById('a_other_device').focus();
+        return;
+    }
+
+    if (selectedDepartment === 'Other' && !otherDepartment) {
+        alert("Please specify the department.");
+        document.getElementById('a_other_department').focus();
+        return;
+    }
+
+    const departmentMatch = getDepartmentMatch(otherDepartment);
+
+    if (selectedDepartment === 'Other' && departmentMatch) {
+        alert(
+            `"${otherDepartment}" matches the existing department "${departmentMatch}". ` +
+            "Please select it from the list."
+        );
         return;
     }
 
@@ -1376,8 +1514,12 @@ async function saveAddedRecord() {
 
     const payload = {
         code: code,
-        device_type: document.getElementById('a_device_type').value,
-        department: document.getElementById('a_department').value,
+
+        // Send the custom value when Other is selected.
+        device_type: selectedDevice === 'Other' ? otherDevice : selectedDevice,
+        department: selectedDepartment === 'Other'
+            ? otherDepartment.toUpperCase()
+            : selectedDepartment,
 
         status: status,
         substatus: substatus,
@@ -1422,7 +1564,7 @@ async function saveAddedRecord() {
 
         alert(
             result.is_flagged
-                ? "Record added. This asset is now flagged because it has 3 or more Repair records."
+                ? "Record added. This asset is flagged because it has 3 or more Repair records."
                 : "Record added successfully."
         );
 
@@ -1432,7 +1574,126 @@ async function saveAddedRecord() {
         console.error("Admin add record error:", error);
         alert("Network error while adding the record.");
     }
-}    
+}
+
+function isStandardDeviceType(value) {
+    return [
+        "Laptop",
+        "Mobile",
+        "Monitor",
+        "Printer",
+        "Docking Station",
+        "Headset",
+        "Other"
+    ].includes(value);
+}
+
+
+function isStandardDepartment(value) {
+    return [
+        "IT",
+        "FINANCE",
+        "PROCUREMENT",
+        "Employee Services",
+        "Other"
+    ].includes(value);
+}
+
+
+/* ---------------- ADD RECORD: OTHER FIELDS ---------------- */
+
+function toggleAddOtherFields() {
+    const device = document.getElementById('a_device_type').value;
+    const department = document.getElementById('a_department').value;
+
+    document.getElementById('a_other_device').style.display =
+        device === 'Other' ? 'block' : 'none';
+
+    document.getElementById('a_other_department').style.display =
+        department === 'Other' ? 'block' : 'none';
+
+    if (device !== 'Other') {
+        document.getElementById('a_other_device').value = '';
+    }
+
+    if (department !== 'Other') {
+        document.getElementById('a_other_department').value = '';
+        document.getElementById('a_other_department_warning').style.display = 'none';
+        document.getElementById('a_other_department').classList.remove('is-invalid');
+    }
+}
+
+
+function handleAddOtherDepartmentInput() {
+    const input = document.getElementById('a_other_department');
+    const warning = document.getElementById('a_other_department_warning');
+
+    const cursorPosition = input.selectionStart;
+    input.value = input.value.toUpperCase();
+    input.setSelectionRange(cursorPosition, cursorPosition);
+
+    const match = getDepartmentMatch(input.value);
+
+    if (match) {
+        warning.textContent =
+            `This matches an existing department: "${match}". Please select it from the list.`;
+
+        warning.style.display = 'block';
+        input.classList.add('is-invalid');
+    } else {
+        warning.style.display = 'none';
+        input.classList.remove('is-invalid');
+    }
+}
+
+
+/* ---------------- EDIT RECORD: OTHER FIELDS ---------------- */
+
+function toggleEditOtherFields() {
+    const device = document.getElementById('e_device').value;
+    const department = document.getElementById('e_department').value;
+
+    document.getElementById('e_other_device').style.display =
+        device === 'Other' ? 'block' : 'none';
+
+    document.getElementById('e_other_department').style.display =
+        department === 'Other' ? 'block' : 'none';
+
+    if (device !== 'Other') {
+        document.getElementById('e_other_device').value = '';
+    }
+
+    if (department !== 'Other') {
+        document.getElementById('e_other_department').value = '';
+        document.getElementById('e_other_department_warning').style.display = 'none';
+        document.getElementById('e_other_department').classList.remove('is-invalid');
+    }
+}
+
+
+function handleEditOtherDepartmentInput() {
+    const input = document.getElementById('e_other_department');
+    const warning = document.getElementById('e_other_department_warning');
+
+    const cursorPosition = input.selectionStart;
+    input.value = input.value.toUpperCase();
+    input.setSelectionRange(cursorPosition, cursorPosition);
+
+    const match = getDepartmentMatch(input.value);
+
+    if (match) {
+        warning.textContent =
+            `This matches an existing department: "${match}". Please select it from the list.`;
+
+        warning.style.display = 'block';
+        input.classList.add('is-invalid');
+    } else {
+        warning.style.display = 'none';
+        input.classList.remove('is-invalid');
+    }
+}
+
+    
 </script>
 </body>
 </html>
