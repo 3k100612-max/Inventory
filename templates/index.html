@@ -311,70 +311,6 @@
 </div>
 
 <!-- EDIT MODAL -->
-<div class="modal fade" id="editModal" data-bs-backdrop="static" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-        <div class="modal-content border-0 shadow-lg">
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title fw-bold">Edit Record</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body p-4">
-                <input type="hidden" id="e_id">
-                <div class="row bg-light p-3 rounded mb-4 border">
-                    <div class="col-md-6 mb-3"><label class="form-label fw-bold">Serial / Code</label><input type="text" id="e_code" class="form-control"></div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label fw-bold">Device Type</label>
-                        <select id="e_device" class="form-select">
-                            <option value="Laptop">Laptop</option><option value="Mobile">Mobile</option>
-                            <option value="Monitor">Monitor</option><option value="Printer">Printer</option>
-                            <option value="Docking Station">Docking Station</option><option value="Headset">Headset</option>
-                            <option value="Other">Other</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6 mb-3"><label class="form-label fw-bold">Employee Name</label><input type="text" id="e_person_name" class="form-control"></div>
-                    <div class="col-md-6 mb-3"><label class="form-label fw-bold">Employee ID</label><input type="text" id="e_employee_id" class="form-control"></div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label fw-bold">Department</label>
-                        <select id="e_department" class="form-select">
-                            <option value="IT">IT</option><option value="FINANCE">FINANCE</option>
-                            <option value="PROCUREMENT">PROCUREMENT</option><option value="Other">Other</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6 mb-3"><label class="form-label fw-bold">IMEI</label><input type="text" id="e_imei" class="form-control"></div>
-                    <div class="col-md-6 mb-3"><label class="form-label fw-bold">MAC Address</label><input type="text" id="e_mac_address" class="form-control"></div>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Status</label>
-                    <select id="e_status" class="form-select" onchange="updateEditSubstatusOptions()">
-                        <option value="In Stock">In Stock</option><option value="Loaned">Loaned</option>
-                        <option value="In Use">In Use</option><option value="Repair">Repair</option>
-                        <option value="Retired">Retired</option>
-                    </select>
-                </div>
-                <div class="mb-3" id="e_substatus_group" style="display:none;">
-                    <label class="form-label fw-bold">Substatus</label>
-                    <select id="e_substatus" class="form-select"><option value="">Select substatus</option></select>
-                </div>
-                <div class="mb-3" id="e_reason_group" style="display:none;">
-                    <label class="form-label fw-bold">Reactivation Reason</label>
-                    <input type="text" id="e_reason" class="form-control" placeholder="Why is this Retired unit being reactivated?">
-                </div>
-                <div class="row">
-                    <div class="col-md-4 mb-3"><label class="form-label small fw-bold">Purchase Date</label><input type="date" id="e_purchase_date" class="form-control"></div>
-                    <div class="col-md-4 mb-3"><label class="form-label small fw-bold">Return Date</label><input type="date" id="e_return_date" class="form-control"></div>
-                    <div class="col-md-4 mb-3"><label class="form-label small fw-bold">End Cycle</label><input type="date" id="e_end_of_cycle" class="form-control"></div>
-                </div>
-                <div class="mb-3"><label class="form-label small fw-bold">Email</label><input type="email" id="e_email" class="form-control"></div>
-                <div class="mb-3"><label class="form-label small fw-bold">Notes</label><textarea id="e_notes" class="form-control" rows="2"></textarea></div>
-            </div>
-            <div class="modal-footer border-0">
-                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button class="btn btn-primary fw-bold px-4" onclick="saveEditData()">Save Changes</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- ADD RECORD MODAL -->
 <div class="modal fade" id="addRecordModal" data-bs-backdrop="static" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -494,6 +430,70 @@
                 <button class="btn btn-primary fw-bold px-4" onclick="saveAddedRecord()">
                     Add to Database
                 </button>
+            </div>
+        </div>
+    </div>
+</div>    
+    
+<div class="modal fade" id="editModal" data-bs-backdrop="static" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold">Edit Record</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <input type="hidden" id="e_id">
+                <div class="row bg-light p-3 rounded mb-4 border">
+                    <div class="col-md-6 mb-3"><label class="form-label fw-bold">Serial / Code</label><input type="text" id="e_code" class="form-control"></div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Device Type</label>
+                        <select id="e_device" class="form-select">
+                            <option value="Laptop">Laptop</option><option value="Mobile">Mobile</option>
+                            <option value="Monitor">Monitor</option><option value="Printer">Printer</option>
+                            <option value="Docking Station">Docking Station</option><option value="Headset">Headset</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6 mb-3"><label class="form-label fw-bold">Employee Name</label><input type="text" id="e_person_name" class="form-control"></div>
+                    <div class="col-md-6 mb-3"><label class="form-label fw-bold">Employee ID</label><input type="text" id="e_employee_id" class="form-control"></div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Department</label>
+                        <select id="e_department" class="form-select">
+                            <option value="IT">IT</option><option value="FINANCE">FINANCE</option>
+                            <option value="PROCUREMENT">PROCUREMENT</option><option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6 mb-3"><label class="form-label fw-bold">IMEI</label><input type="text" id="e_imei" class="form-control"></div>
+                    <div class="col-md-6 mb-3"><label class="form-label fw-bold">MAC Address</label><input type="text" id="e_mac_address" class="form-control"></div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Status</label>
+                    <select id="e_status" class="form-select" onchange="updateEditSubstatusOptions()">
+                        <option value="In Stock">In Stock</option><option value="Loaned">Loaned</option>
+                        <option value="In Use">In Use</option><option value="Repair">Repair</option>
+                        <option value="Retired">Retired</option>
+                    </select>
+                </div>
+                <div class="mb-3" id="e_substatus_group" style="display:none;">
+                    <label class="form-label fw-bold">Substatus</label>
+                    <select id="e_substatus" class="form-select"><option value="">Select substatus</option></select>
+                </div>
+                <div class="mb-3" id="e_reason_group" style="display:none;">
+                    <label class="form-label fw-bold">Reactivation Reason</label>
+                    <input type="text" id="e_reason" class="form-control" placeholder="Why is this Retired unit being reactivated?">
+                </div>
+                <div class="row">
+                    <div class="col-md-4 mb-3"><label class="form-label small fw-bold">Purchase Date</label><input type="date" id="e_purchase_date" class="form-control"></div>
+                    <div class="col-md-4 mb-3"><label class="form-label small fw-bold">Return Date</label><input type="date" id="e_return_date" class="form-control"></div>
+                    <div class="col-md-4 mb-3"><label class="form-label small fw-bold">End Cycle</label><input type="date" id="e_end_of_cycle" class="form-control"></div>
+                </div>
+                <div class="mb-3"><label class="form-label small fw-bold">Email</label><input type="email" id="e_email" class="form-control"></div>
+                <div class="mb-3"><label class="form-label small fw-bold">Notes</label><textarea id="e_notes" class="form-control" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer border-0">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-primary fw-bold px-4" onclick="saveEditData()">Save Changes</button>
             </div>
         </div>
     </div>
@@ -634,6 +634,7 @@ document.addEventListener('DOMContentLoaded', () => {
     confirmModalInstance = new bootstrap.Modal(document.getElementById('confirmModal'));
     editModalInstance = new bootstrap.Modal(document.getElementById('editModal'));
     toggleUI();
+    updateAddSubstatusOptions();
     const el = document.getElementById('scan_engine_status');
     if (el) el.textContent = window.Html5Qrcode ? "Scanner engine ready" : "Scanner failed to load";
 });
@@ -1329,6 +1330,109 @@ async function uploadExcel() {
         alert("Upload failed.");
     }
 }
+function updateAddSubstatusOptions() {
+    const status = document.getElementById('a_status').value;
+    const select = document.getElementById('a_substatus');
+
+    const substatusOptions = {
+        "In Stock": ["New", "Active"],
+        "Loaned": ["Service Unit"],
+        "In Use": ["Active"],
+        "Repair": ["Ongoing"],
+        "Retired": ["Lost", "End of Life"]
+    };
+
+    const options = substatusOptions[status] || [];
+
+    select.innerHTML = '';
+
+    options.forEach(substatus => {
+        const option = document.createElement('option');
+        option.value = substatus;
+        option.textContent = substatus;
+        select.appendChild(option);
+    });
+
+    // These statuses have one server-enforced substatus.
+    select.disabled = ["Loaned", "In Use", "Repair"].includes(status);
+}
+
+
+async function saveAddedRecord() {
+    const code = document.getElementById('a_code').value.trim();
+    const status = document.getElementById('a_status').value;
+    const substatus = document.getElementById('a_substatus').value;
+
+    if (!code) {
+        alert("Serial / Code is required.");
+        document.getElementById('a_code').focus();
+        return;
+    }
+
+    if (["In Stock", "Retired"].includes(status) && !substatus) {
+        alert("Please select a substatus.");
+        return;
+    }
+
+    const payload = {
+        code: code,
+        device_type: document.getElementById('a_device_type').value,
+        department: document.getElementById('a_department').value,
+
+        status: status,
+        substatus: substatus,
+
+        person_name: document.getElementById('a_person_name').value,
+        employee_id: document.getElementById('a_employee_id').value,
+        email: document.getElementById('a_email').value,
+
+        imei: document.getElementById('a_imei').value,
+        mac_address: document.getElementById('a_mac_address').value,
+
+        purchase_date: document.getElementById('a_purchase_date').value,
+        return_date: document.getElementById('a_return_date').value,
+        end_of_cycle: document.getElementById('a_end_of_cycle').value,
+
+        reason: document.getElementById('a_reason').value,
+        notes: document.getElementById('a_notes').value
+    };
+
+    try {
+        const response = await fetch('/scan/add', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || result.status !== 'success') {
+            alert(result.message || "Unable to add the record.");
+            return;
+        }
+
+        const modalElement = document.getElementById('addRecordModal');
+        const modal = bootstrap.Modal.getInstance(modalElement);
+
+        if (modal) {
+            modal.hide();
+        }
+
+        alert(
+            result.is_flagged
+                ? "Record added. This asset is now flagged because it has 3 or more Repair records."
+                : "Record added successfully."
+        );
+
+        location.reload();
+
+    } catch (error) {
+        console.error("Admin add record error:", error);
+        alert("Network error while adding the record.");
+    }
+}    
 </script>
 </body>
 </html>
