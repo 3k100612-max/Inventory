@@ -363,7 +363,8 @@
                            id="a_other_department"
                            class="form-control mt-2 border-primary"
                            placeholder="Specify department"
-                           style="display:none;">
+                           style="display:none;"
+                           onchange="handleAddOtherDepartmentInput()">
                 
                         <div id="a_other_department_warning"
                            class="small text-danger mt-1"
@@ -480,7 +481,8 @@
                            id="e_other_device"
                            class="form-control mt-2 border-primary"
                            placeholder="Specify device type"
-                           style="display:none;">
+                           style="display:none;"
+                           onchange="toggleEditOtherFields()">
                 </div>
 
                     <div class="col-md-6 mb-3"><label class="form-label fw-bold">Employee Name</label><input type="text" id="e_person_name" class="form-control"></div>
@@ -501,7 +503,8 @@
                            id="e_other_department"
                            class="form-control mt-2 border-primary"
                            placeholder="Specify department"
-                           style="display:none;">
+                           style="display:none;"
+                        onchange="handleEditOtherDepartmentInput()">
                 
                     <div id="e_other_department_warning"
                          class="small text-danger mt-1"
