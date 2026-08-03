@@ -332,7 +332,7 @@
 
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold">Device Type</label>
-                        <select id="a_device_type" class="form-select">
+                        <select id="a_device_type" class="form-select" onchange="toggleAddOtherFields()">
                             <option value="Laptop">Laptop</option>
                             <option value="Mobile">Mobile</option>
                             <option value="Monitor">Monitor</option>
@@ -346,12 +346,13 @@
                                id="a_other_device"
                                class="form-control mt-2 border-primary"
                                placeholder="Specify device type"
-                               style="display:none;">
+                               style="display:none;"
+                               oninput="handleAddOtherDepartmentInput()">
                     </div>
 
                     <div class="col-md-6 mb-3">
                         <label class="form-label fw-bold">Department</label>
-                        <select id="a_department" class="form-select">
+                        <select id="a_department" class="form-select" onchange="toggleAddOtherFields()">
                             <option value="IT">IT</option>
                             <option value="FINANCE">FINANCE</option>
                             <option value="PROCUREMENT">PROCUREMENT</option>
