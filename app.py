@@ -931,7 +931,7 @@ def import_excel():
     filepath = os.path.join(app.config["UPLOAD_FOLDER"], unique_filename)
     file.save(filepath)
 
-    try:
+try:
         wb = load_workbook(filepath, read_only=True, data_only=True)
         ws = wb.active
 
