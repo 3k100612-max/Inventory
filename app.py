@@ -931,13 +931,25 @@ def import_excel():
     filepath = os.path.join(app.config["UPLOAD_FOLDER"], unique_filename)
     file.save(filepath)
 
-    try:
+   try:
         wb = load_workbook(filepath, read_only=True, data_only=True)
         ws = wb.active
 
         imported = 0
         skipped = 0
         errors = []
+
+        # ---- One query for all existing Repair counts, instead of a
+        # per-row query inside compute_is_flagged(). ----
+        existing_repair_counts = dict(
+            db.session.query(InventoryScan.code, func.count(InventoryScan.id))
+            .filter(InventoryScan.status == "Repair")
+            .group_by(InventoryScan.code)
+            .all()
+        )
+        # Tracks Repair rows seen so far in this batch, so multiple Repair
+        # rows for the same code in one file still stack against the total.
+        batch_repair_counts = {}
 
         for row_number, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
             try:
@@ -980,6 +992,14 @@ def import_excel():
                 else:
                     substatus_value = None
 
+                # ---- In-memory flag computation (no per-row DB query) ----
+                if status_value == "Repair":
+                    batch_repair_counts[serial] = batch_repair_counts.get(serial, 0) + 1
+                    total_repairs = existing_repair_counts.get(serial, 0) + batch_repair_counts[serial]
+                    is_flagged = total_repairs >= 3
+                else:
+                    is_flagged = False
+
                 scan = InventoryScan(
                     code=serial,
                     device_type=row[2] or "Other",
@@ -997,9 +1017,7 @@ def import_excel():
                     reason=row[14],
                     notes=row[15],
                     timestamp=(timestamp if isinstance(timestamp, datetime) else datetime.utcnow()),
-                    # compute_is_flagged() queries the DB with autoflush, so it correctly
-                    # sees prior rows from earlier in this same import batch too.
-                    is_flagged=compute_is_flagged(serial, status_value)
+                    is_flagged=is_flagged
                 )
                 db.session.add(scan)
                 imported += 1
@@ -1010,6 +1028,7 @@ def import_excel():
 
         db.session.commit()
         wb.close()
+       
         return jsonify({
             "status": "success",
             "imported": imported,
