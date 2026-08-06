@@ -577,6 +577,18 @@
                         Maximum upload: 100 MB
                     </small>
                 </div>
+
+                <div id="import_progress_wrap" style="display:none;" class="mt-3">
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span id="import_progress_label">Uploading...</span>
+                        <span id="import_progress_pct">0%</span>
+                    </div>
+                    <div class="progress" style="height: 10px;">
+                        <div id="import_progress_bar"
+                             class="progress-bar bg-warning progress-bar-striped"
+                             role="progressbar" style="width:0%"></div>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -1418,27 +1430,80 @@ document.querySelectorAll('.sortable-th').forEach(th => {
     th.addEventListener('click', () => sortTable(th.dataset.sort));
 });
 
-async function uploadExcel() {
-    const file = document.getElementById("excelFile").files[0];
+function uploadExcel() {
+    const fileInputEl = document.getElementById("excelFile");
+    const file = fileInputEl.files[0];
     if (!file) { alert("Please select an Excel file."); return; }
 
     const formData = new FormData();
     formData.append("file", file);
 
-    try {
-        const response = await fetch("/import/excel", { method: "POST", body: formData });
-        const result = await response.json();
-        if (result.status === "success") {
+    const wrap = document.getElementById('import_progress_wrap');
+    const bar = document.getElementById('import_progress_bar');
+    const pct = document.getElementById('import_progress_pct');
+    const label = document.getElementById('import_progress_label');
+    const uploadBtn = document.querySelector('#importModal .btn-warning');
+
+    wrap.style.display = 'block';
+    bar.style.width = '0%';
+    bar.classList.remove('bg-success');
+    bar.classList.add('bg-warning', 'progress-bar-striped', 'progress-bar-animated');
+    pct.textContent = '0%';
+    label.textContent = 'Uploading...';
+    uploadBtn.disabled = true;
+    fileInputEl.disabled = true;
+
+    const xhr = new XMLHttpRequest();
+
+    xhr.upload.addEventListener('progress', (e) => {
+        if (!e.lengthComputable) return;
+        const percent = Math.round((e.loaded / e.total) * 100);
+        bar.style.width = percent + '%';
+        pct.textContent = percent + '%';
+    });
+
+    xhr.upload.addEventListener('load', () => {
+        bar.style.width = '100%';
+        pct.textContent = '100%';
+        label.textContent = 'Processing rows on server...';
+    });
+
+    xhr.addEventListener('load', () => {
+        uploadBtn.disabled = false;
+        fileInputEl.disabled = false;
+
+        let result;
+        try {
+            result = JSON.parse(xhr.responseText);
+        } catch (e) {
+            wrap.style.display = 'none';
+            alert('Unexpected server response.');
+            return;
+        }
+
+        if (xhr.status >= 200 && xhr.status < 300 && result.status === 'success') {
+            bar.classList.remove('bg-warning', 'progress-bar-animated');
+            bar.classList.add('bg-success');
+            label.textContent = 'Done';
             alert("Import Complete\n\nImported : " + result.imported + "\nSkipped : " + result.skipped);
             location.reload();
         } else {
-            alert(result.message);
+            wrap.style.display = 'none';
+            alert(result.message || 'Import failed.');
         }
-    } catch (e) {
-        console.error(e);
-        alert("Upload failed.");
-    }
+    });
+
+    xhr.addEventListener('error', () => {
+        uploadBtn.disabled = false;
+        fileInputEl.disabled = false;
+        wrap.style.display = 'none';
+        alert('Upload failed due to a network error.');
+    });
+
+    xhr.open('POST', '/import/excel');
+    xhr.send(formData);
 }
+    
 function updateAddSubstatusOptions() {
     const status = document.getElementById('a_status').value;
     const select = document.getElementById('a_substatus');
