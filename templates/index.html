@@ -755,6 +755,7 @@ let scanner,
 
 
 
+
 const EXISTING_DEPARTMENTS = {{ departments | tojson }};
 
 const DEPARTMENT_ALIASES = {
@@ -790,23 +791,26 @@ function isDepartmentDuplicate(value) {
 }
 
 function handleOtherDeptInput() {
-    const input = document.getElementById('m_other_dept');
-    const warning = document.getElementById('other_dept_warning');
-
-    const cursorPos = input.selectionStart;
-    input.value = input.value.toUpperCase();
-    input.setSelectionRange(cursorPos, cursorPos);
+    const input = document.getElementById("m_other_dept");
+    const warning = document.getElementById(
+        "other_dept_warning"
+    );
 
     const match = getDepartmentMatch(input.value);
+
     if (match) {
-        warning.textContent = `This matches an existing department: "${match}". Please select it from the list above.`;
-        warning.style.display = 'block';
-        input.classList.add('is-invalid');
+        warning.textContent =
+            `This matches an existing department: "${match}". ` +
+            "Please select it from the list above.";
+
+        warning.style.display = "block";
+        input.classList.add("is-invalid");
     } else {
-        warning.style.display = 'none';
-        input.classList.remove('is-invalid');
+        warning.style.display = "none";
+        input.classList.remove("is-invalid");
     }
 }
+
 
 // Cut off everything from the first ";" onward, then trim.
 // e.g. "ABC123;extra;stuff" -> "ABC123"
@@ -2216,14 +2220,23 @@ function isStandardDeviceType(value) {
 
 
 function isStandardDepartment(value) {
-    return [
+    if (!value) {
+        return false;
+    }
+
+    const standardDepartments = [
         "IT",
         "FINANCE",
         "PROCUREMENT",
-        "Employee Services",
-        "Other"
-    ].includes(value);
+        "EMPLOYEE SERVICES",
+        "OTHER"
+    ];
+
+    return standardDepartments.includes(
+        String(value).trim().toUpperCase()
+    );
 }
+
 
 
 /* ---------------- ADD RECORD: OTHER FIELDS ---------------- */
