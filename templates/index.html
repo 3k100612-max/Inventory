@@ -542,6 +542,142 @@
         </div>
     </div>
 </div>
+<!-- DATABASE INFORMATION MODAL -->
+<div class="modal fade" id="databaseInfoModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content border-0 shadow-lg">
+
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold">
+                    Database Information
+                </h5>
+
+                <button
+                    type="button"
+                    class="btn-close btn-close-white"
+                    data-bs-dismiss="modal">
+                </button>
+            </div>
+
+            <div class="modal-body">
+
+                <div class="alert alert-info">
+                    This information is read-only. Saving a new status will
+                    create a new tracking event and will not change previous records.
+                </div>
+
+                <h5 class="fw-bold mb-3">
+                    Latest Record
+                </h5>
+
+                <div class="row g-3 mb-4">
+
+                    <div class="col-md-3">
+                        <label class="small text-muted">Serial / Code</label>
+                        <div id="db_latest_code" class="fw-bold">-</div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="small text-muted">Device Type</label>
+                        <div id="db_latest_device">-</div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="small text-muted">Department</label>
+                        <div id="db_latest_department">-</div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="small text-muted">Previous Status</label>
+                        <div id="db_latest_status">-</div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="small text-muted">Substatus</label>
+                        <div id="db_latest_substatus">-</div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="small text-muted">Employee</label>
+                        <div id="db_latest_employee">-</div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="small text-muted">Employee ID</label>
+                        <div id="db_latest_employee_id">-</div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="small text-muted">Email</label>
+                        <div id="db_latest_email">-</div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="small text-muted">IMEI</label>
+                        <div id="db_latest_imei">-</div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="small text-muted">MAC Address</label>
+                        <div id="db_latest_mac">-</div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="small text-muted">Purchase Date</label>
+                        <div id="db_latest_purchase_date">-</div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="small text-muted">Return Date</label>
+                        <div id="db_latest_return_date">-</div>
+                    </div>
+
+                </div>
+
+                <h5 class="fw-bold mb-3">
+                    Tracking History
+                </h5>
+
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Date / Time</th>
+                                <th>Status</th>
+                                <th>Substatus</th>
+                                <th>Employee</th>
+                                <th>Department</th>
+                                <th>Reason</th>
+                                <th>Notes</th>
+                            </tr>
+                        </thead>
+
+                        <tbody id="database_history_body">
+                        </tbody>
+                    </table>
+                </div>
+
+                <div
+                    id="database_history_empty"
+                    class="text-center text-muted py-3"
+                    style="display:none;">
+                    No tracking history found.
+                </div>
+
+            </div>
+
+            <div class="modal-footer">
+                <button
+                    type="button"
+                    class="btn btn-secondary"
+                    data-bs-dismiss="modal">
+                    Close
+                </button>
+            </div>
+
+        </div>
+    </div>
+</div>
 
 <!-- CONFIRM MODAL -->
 <div class="modal fade" id="confirmModal" data-bs-backdrop="static" tabindex="-1">
@@ -603,8 +739,17 @@
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
 <script>
-let scanner, activeFieldId = 'scan_serial', cfg = {}, promptModal,
-    confirmModalInstance, pendingIdentifiers = [], pendingReason = null;
+let scanner,
+    activeFieldId = 'scan_serial',
+    cfg = {},
+    promptModal,
+    confirmModalInstance,
+    databaseInfoModal,
+    pendingIdentifiers = [],
+    pendingReason = null,
+    allowNewRecord = false,
+    latestDatabaseRecord = null;
+
 
 const EXISTING_DEPARTMENTS = {{ departments | tojson }};
 
@@ -686,15 +831,37 @@ function setSelectValuePreserveCustom(selectId, value) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    promptModal = new bootstrap.Modal(document.getElementById('promptModal'));
-    confirmModalInstance = new bootstrap.Modal(document.getElementById('confirmModal'));
-    editModalInstance = new bootstrap.Modal(document.getElementById('editModal'));
+    promptModal = new bootstrap.Modal(
+        document.getElementById('promptModal')
+    );
+
+    confirmModalInstance = new bootstrap.Modal(
+        document.getElementById('confirmModal')
+    );
+
+    databaseInfoModal = new bootstrap.Modal(
+        document.getElementById('databaseInfoModal')
+    );
+
+    editModalInstance = new bootstrap.Modal(
+        document.getElementById('editModal')
+    );
+
     toggleUI();
     updateAddSubstatusOptions();
     toggleAddOtherFields();
-    const el = document.getElementById('scan_engine_status');
-    if (el) el.textContent = window.Html5Qrcode ? "Scanner engine ready" : "Scanner failed to load";
+
+    const scannerStatus =
+        document.getElementById('scan_engine_status');
+
+    if (scannerStatus) {
+        scannerStatus.textContent =
+            window.Html5Qrcode
+                ? "Scanner engine ready"
+                : "Scanner failed to load";
+    }
 });
+
 
 function showConfirm(message, { needsReason = false } = {}) {
     return new Promise((resolve) => {
@@ -831,40 +998,110 @@ async function confirmSetup() {
 
 async function onSerialScanned(text) {
     try {
-        const res = await fetch('/scan/check', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code: text })
-        }).then(r => r.json());
+        const response = await fetch('/scan/check', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                code: text
+            })
+        });
 
-        if (!res.ok || !res.accept) {
-            alert(res.reason || res.error || "Rejected");
-            
-                scanner.locked = false;
-            
-                setTimeout(() => {
+        const result = await response.json();
+
+        if (!response.ok || !result.ok || !result.accept) {
+            alert(
+                result.reason ||
+                result.error ||
+                "Scan rejected."
+            );
+
+            if (scanner) {
+                scanner.resume();
+            }
+
+            return;
+        }
+
+        pendingReason = null;
+        latestDatabaseRecord = result.latest || null;
+        allowNewRecord = false;
+
+        /*
+         * Existing code:
+         * Display the database information without changing it.
+         */
+        if (result.exists) {
+            showDatabaseInformation(
+                result.latest,
+                result.history
+            );
+        }
+
+        /*
+         * New code:
+         * Ask for confirmation before creating the first event.
+         */
+        if (!result.exists) {
+            const shouldAdd = await showConfirm(
+                result.confirmMessage
+            );
+
+            if (!shouldAdd) {
+                if (scanner) {
                     scanner.resume();
-                }, 1500);
-            
+                }
+
                 return;
             }
 
-        pendingReason = null;
-        if (res.confirmMessage) {
-            const answer = await showConfirm(res.confirmMessage, { needsReason: res.requireReason });
-            if (!answer) { if (scanner) scanner.resume(); return; }
-            if (res.requireReason) pendingReason = answer;
+            allowNewRecord = true;
         }
 
-        document.getElementById('scan_serial').value = res.code;
-        document.getElementById('btn_manual_save').disabled = false;
-        pendingIdentifiers = res.nextIdentifiers || [];
+        /*
+         * Warn when this new selected status is Repair
+         * and the asset already has two or more Repair events.
+         */
+        if (result.flag === 'red') {
+            const continueRepair = await showConfirm(
+                `This asset already has at least two Repair events. ` +
+                `Saving this event will flag the asset. Continue?`
+            );
+
+            if (!continueRepair) {
+                if (scanner) {
+                    scanner.resume();
+                }
+
+                return;
+            }
+        }
+
+        document.getElementById('scan_serial').value =
+            result.code;
+
+        document.getElementById('btn_manual_save').disabled =
+            false;
+
+        pendingIdentifiers =
+            result.nextIdentifiers || [];
+
         promptModal.show();
-    } catch (err) {
-        console.error(err);
-        alert("Network error - please try again.");
-        if (scanner) scanner.resume();
+
+    } catch (error) {
+        console.error('Scan lookup error:', error);
+
+        alert(
+            "Network error while checking the database."
+        );
+
+        if (scanner) {
+            scanner.resume();
+        }
     }
 }
+
 
 // ============================================================
 // Html5Qrcode wrapper: QR + Code128 only, native detector when
@@ -1091,68 +1328,96 @@ function setNextField(id) {
     if (scanner) scanner.resume();
 }
 
-function saveData() {
+async function saveData() {
     promptModal.hide();
+
     const payload = {
-        ...cfg,
         code: document.getElementById('scan_serial').value,
         imei: document.getElementById('scan_imei').value,
         mac_address: document.getElementById('scan_mac').value,
-        reason: pendingReason
+        reason: pendingReason,
+
+        /*
+         * This is the status selected when the session started.
+         * It becomes the status of the new tracking event only.
+         */
+        status: cfg.status,
+
+        /*
+         * Required only when the scanned code did not previously exist.
+         */
+        allowNewRecord: allowNewRecord
     };
 
-    fetch('/scanned', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    })
-    .then(r => r.json()).then(d => {
+    try {
+        const response = await fetch('/scanned', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+
+        if (result.status !== 'success') {
+            alert(
+                result.message ||
+                "Unable to save tracking event."
+            );
+
+            if (scanner) {
+                scanner.resume();
+            }
+
+            return;
+        }
+
         pendingReason = null;
-        if (d.status === 'success') {
-            document.getElementById('save_toast').style.display = 'block';
-            setTimeout(() => { document.getElementById('save_toast').style.display = 'none'; }, 2000);
+        allowNewRecord = false;
+        latestDatabaseRecord = null;
 
-            if (cfg.scanMode === 'Multiple') {
-                document.getElementById('scan_serial').value = '';
-                document.getElementById('scan_imei').value = '';
-                document.getElementById('scan_mac').value = '';
-                activeFieldId = 'scan_serial';
-                document.querySelectorAll('#scan_serial, #scan_imei, #scan_mac').forEach(i => i.classList.remove('active-scan-field'));
-                document.getElementById('scan_serial').classList.add('active-scan-field');
-                document.getElementById('btn_manual_save').disabled = true;
-                if (scanner) scanner.resume();
+        document.getElementById('save_toast').style.display =
+            'block';
 
-                const table = document.getElementById('history_body');
-                const nowIso = new Date().toISOString().slice(0, 19);
-                const newRow = `
-                    <tr data-time="${nowIso}" data-code="${payload.code}" data-status="${payload.status}"
-                        data-device="${payload.device}" data-employee="${payload.user}" data-dept="${payload.dept || ''}">
-                        <td class="small text-muted">Just Now</td>
-                        <td>
-                            <div class="fw-bold">${payload.code}</div>
-                            <div class="small text-muted">${payload.device}</div>
-                        </td>
-                        <td><span class="badge rounded-pill bg-secondary status-badge">${payload.status}</span></td>
-                        <td>${payload.substatus ? `<span class="badge bg-light text-dark border">${payload.substatus}</span>` : '<span class="text-muted">-</span>'}</td>
-                        <td>${payload.user}</td>
-                        <td>-</td>
-                    </tr>`;
-                table.insertAdjacentHTML('afterbegin', newRow);
-                applyTableFilters();
-            } else {
-                location.reload();
+        setTimeout(() => {
+            document.getElementById('save_toast').style.display =
+                'none';
+        }, 2000);
+
+        if (cfg.scanMode === 'Multiple') {
+            resetScanFields();
+
+            if (scanner) {
+                scanner.resume();
             }
         } else {
-            alert(d.message || "Save failed.");
-            if (scanner) scanner.resume();
+            /*
+             * In Single mode, end the session after one event.
+             */
+            if (scanner) {
+                scanner.stop();
+            }
+
+            location.reload();
         }
-    })
-    .catch(err => {
+
+    } catch (error) {
+        console.error('Save tracking event error:', error);
+
         pendingReason = null;
-        alert("Network error while saving.");
-        if (scanner) scanner.resume();
-    });
+        allowNewRecord = false;
+
+        alert(
+            "Network error while saving the tracking event."
+        );
+
+        if (scanner) {
+            scanner.resume();
+        }
+    }
 }
+
 
 async function deleteSingle(id) {
     const confirmed = await showConfirm("Permanently delete this record?");
@@ -1756,6 +2021,145 @@ function handleEditOtherDepartmentInput() {
         warning.style.display = 'none';
         input.classList.remove('is-invalid');
     }
+}
+function escapeHtml(value) {
+    if (value === null || value === undefined) {
+        return '';
+    }
+
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+
+function displayValue(value) {
+    return value === null ||
+           value === undefined ||
+           value === ''
+        ? '-'
+        : escapeHtml(value);
+}
+
+
+function formatDatabaseDate(value) {
+    if (!value) {
+        return '-';
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return escapeHtml(value);
+    }
+
+    return escapeHtml(date.toLocaleString());
+}
+function showDatabaseInformation(latest, history) {
+    if (!latest) {
+        return;
+    }
+
+    document.getElementById('db_latest_code').textContent =
+        latest.code || '-';
+
+    document.getElementById('db_latest_device').textContent =
+        latest.device_type || '-';
+
+    document.getElementById('db_latest_department').textContent =
+        latest.department || '-';
+
+    document.getElementById('db_latest_status').textContent =
+        latest.status || '-';
+
+    document.getElementById('db_latest_substatus').textContent =
+        latest.substatus || '-';
+
+    document.getElementById('db_latest_employee').textContent =
+        latest.person_name || '-';
+
+    document.getElementById('db_latest_employee_id').textContent =
+        latest.employee_id || '-';
+
+    document.getElementById('db_latest_email').textContent =
+        latest.email || '-';
+
+    document.getElementById('db_latest_imei').textContent =
+        latest.imei || '-';
+
+    document.getElementById('db_latest_mac').textContent =
+        latest.mac_address || '-';
+
+    document.getElementById('db_latest_purchase_date').textContent =
+        latest.purchase_date || '-';
+
+    document.getElementById('db_latest_return_date').textContent =
+        latest.return_date || '-';
+
+    const historyBody = document.getElementById(
+        'database_history_body'
+    );
+
+    const emptyMessage = document.getElementById(
+        'database_history_empty'
+    );
+
+    historyBody.innerHTML = '';
+
+    if (!history || history.length === 0) {
+        emptyMessage.style.display = 'block';
+    } else {
+        emptyMessage.style.display = 'none';
+
+        history.forEach(event => {
+            const row = document.createElement('tr');
+
+            row.innerHTML = `
+                <td>${formatDatabaseDate(event.timestamp)}</td>
+                <td>
+                    <span class="badge bg-secondary">
+                        ${displayValue(event.status)}
+                    </span>
+                </td>
+                <td>${displayValue(event.substatus)}</td>
+                <td>${displayValue(event.person_name)}</td>
+                <td>${displayValue(event.department)}</td>
+                <td>${displayValue(event.reason)}</td>
+                <td>${displayValue(event.notes)}</td>
+            `;
+
+            historyBody.appendChild(row);
+        });
+    }
+
+    databaseInfoModal.show();
+}
+function resetScanFields() {
+    document.getElementById('scan_serial').value = '';
+    document.getElementById('scan_imei').value = '';
+    document.getElementById('scan_mac').value = '';
+
+    activeFieldId = 'scan_serial';
+
+    document.querySelectorAll(
+        '#scan_serial, #scan_imei, #scan_mac'
+    ).forEach(input => {
+        input.classList.remove('active-scan-field');
+    });
+
+    document.getElementById('scan_serial')
+        .classList.add('active-scan-field');
+
+    document.getElementById('btn_manual_save').disabled =
+        true;
+
+    pendingIdentifiers = [];
+    pendingReason = null;
+    latestDatabaseRecord = null;
+    allowNewRecord = false;
 }
 
     
