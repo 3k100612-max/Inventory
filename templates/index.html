@@ -1547,13 +1547,13 @@ async function openExistingRecordModal(latest, history) {
         scanInProgress = false;
 
         if (scanner) {
+            scanner.locked = false;
             scanner.resume();
         }
 
         return;
     }
 
-    // Keep the camera paused while the modal is open.
     if (scanner) {
         scanner.pause();
         scanner.locked = true;
@@ -1588,28 +1588,43 @@ async function openExistingRecordModal(latest, history) {
     document.getElementById("e_reason").value =
         latest.reason || "";
 
-    document.getElementById("e_purchase_date").value =
-        latest.purchase_date || "";
-
-    document.getElementById("e_return_date").value =
-        latest.return_date || "";
-
-    document.getElementById("e_end_of_cycle").value =
-        latest.end_of_cycle || "";
-
     document.getElementById("e_notes").value =
         latest.notes || "";
+
+    /*
+     * HTML date inputs require YYYY-MM-DD.
+     * The substring also protects against ISO datetime values.
+     */
+    document.getElementById("e_purchase_date").value =
+        latest.purchase_date
+            ? String(latest.purchase_date).substring(0, 10)
+            : "";
+
+    document.getElementById("e_return_date").value =
+        latest.return_date
+            ? String(latest.return_date).substring(0, 10)
+            : "";
+
+    document.getElementById("e_end_of_cycle").value =
+        latest.end_of_cycle
+            ? String(latest.end_of_cycle).substring(0, 10)
+            : "";
 
     if (isStandardDeviceType(latest.device_type)) {
         document.getElementById("e_device").value =
             latest.device_type;
 
-        document.getElementById("e_other_device").value = "";
+        document.getElementById(
+            "e_other_device"
+        ).value = "";
     } else {
-        document.getElementById("e_device").value = "Other";
+        document.getElementById(
+            "e_device"
+        ).value = "Other";
 
-        document.getElementById("e_other_device").value =
-            latest.device_type || "";
+        document.getElementById(
+            "e_other_device"
+        ).value = latest.device_type || "";
     }
 
     if (isStandardDepartment(latest.department)) {
@@ -1621,7 +1636,6 @@ async function openExistingRecordModal(latest, history) {
         document.getElementById(
             "e_other_department"
         ).value = "";
-
     } else {
         document.getElementById(
             "e_department"
@@ -1640,6 +1654,7 @@ async function openExistingRecordModal(latest, history) {
 
     editModalInstance.show();
 }
+
 
 
 async function openEditModal(scanId) {
@@ -1738,8 +1753,8 @@ async function saveEditData() {
         getDepartmentMatch(otherDepartment)
     ) {
         alert(
-            `"${otherDepartment}" matches an existing ` +
-            "department. Please select it from the list."
+            `"${otherDepartment}" matches an existing department. ` +
+            "Please select it from the list."
         );
         return;
     }
@@ -1770,49 +1785,59 @@ async function saveEditData() {
 
         department:
             selectedDepartment === "Other"
-                ? otherDepartment.toUpperCase()
+                ? otherDepartment
                 : selectedDepartment,
 
         person_name:
-            document.getElementById("e_person_name").value,
+            document.getElementById("e_person_name")
+                .value,
 
         employee_id:
-            document.getElementById("e_employee_id").value,
+            document.getElementById("e_employee_id")
+                .value,
 
         imei:
-            document.getElementById("e_imei").value,
+            document.getElementById("e_imei")
+                .value,
 
         mac_address:
-            document.getElementById("e_mac_address").value,
+            document.getElementById("e_mac_address")
+                .value,
 
         email:
-            document.getElementById("e_email").value,
+            document.getElementById("e_email")
+                .value,
 
         status: status,
 
         substatus:
-            document.getElementById("e_substatus").value,
+            document.getElementById("e_substatus")
+                .value,
 
         reason:
-            document.getElementById("e_reason").value,
+            document.getElementById("e_reason")
+                .value,
 
         purchase_date:
-            document.getElementById("e_purchase_date").value,
+            document.getElementById("e_purchase_date")
+                .value,
 
         return_date:
-            document.getElementById("e_return_date").value,
+            document.getElementById("e_return_date")
+                .value,
 
         end_of_cycle:
-            document.getElementById("e_end_of_cycle").value,
+            document.getElementById("e_end_of_cycle")
+                .value,
 
         notes:
-            document.getElementById("e_notes").value
+            document.getElementById("e_notes")
+                .value
     };
 
-    const saveButton =
-        document.querySelector(
-            "#editModal .modal-footer .btn-primary"
-        );
+    const saveButton = document.querySelector(
+        "#editModal .modal-footer .btn-primary"
+    );
 
     if (saveButton) {
         saveButton.disabled = true;
@@ -1850,8 +1875,9 @@ async function saveEditData() {
 
         editModalInstance.hide();
 
-        const toast =
-            document.getElementById("save_toast");
+        const toast = document.getElementById(
+            "save_toast"
+        );
 
         toast.textContent =
             "Record updated successfully.";
@@ -1880,7 +1906,6 @@ async function saveEditData() {
             return;
         }
 
-        // Single Scan mode.
         scanInProgress = false;
 
         if (scanner) {
@@ -1914,6 +1939,7 @@ async function saveEditData() {
         }
     }
 }
+
 
 
 
@@ -2148,7 +2174,7 @@ async function saveAddedRecord() {
         // Send the custom value when Other is selected.
         device_type: selectedDevice === 'Other' ? otherDevice : selectedDevice,
         department: selectedDepartment === 'Other'
-            ? otherDepartment.toUpperCase()
+            ? otherDepartment.trim()
             : selectedDepartment,
 
         status: status,
@@ -2264,26 +2290,29 @@ function toggleAddOtherFields() {
 
 
 function handleAddOtherDepartmentInput() {
-    const input = document.getElementById('a_other_department');
-    const warning = document.getElementById('a_other_department_warning');
+    const input = document.getElementById(
+        "a_other_department"
+    );
 
-    const cursorPosition = input.selectionStart;
-    input.value = input.value.toUpperCase();
-    input.setSelectionRange(cursorPosition, cursorPosition);
+    const warning = document.getElementById(
+        "a_other_department_warning"
+    );
 
     const match = getDepartmentMatch(input.value);
 
     if (match) {
         warning.textContent =
-            `This matches an existing department: "${match}". Please select it from the list.`;
+            `This matches an existing department: "${match}". ` +
+            "Please select it from the list.";
 
-        warning.style.display = 'block';
-        input.classList.add('is-invalid');
+        warning.style.display = "block";
+        input.classList.add("is-invalid");
     } else {
-        warning.style.display = 'none';
-        input.classList.remove('is-invalid');
+        warning.style.display = "none";
+        input.classList.remove("is-invalid");
     }
 }
+
 
 
 /* ---------------- EDIT RECORD: OTHER FIELDS ---------------- */
@@ -2311,26 +2340,30 @@ function toggleEditOtherFields() {
 
 
 function handleEditOtherDepartmentInput() {
-    const input = document.getElementById('e_other_department');
-    const warning = document.getElementById('e_other_department_warning');
+    const input = document.getElementById(
+        "e_other_department"
+    );
 
-    const cursorPosition = input.selectionStart;
-    input.value = input.value.toUpperCase();
-    input.setSelectionRange(cursorPosition, cursorPosition);
+    const warning = document.getElementById(
+        "e_other_department_warning"
+    );
 
     const match = getDepartmentMatch(input.value);
 
     if (match) {
         warning.textContent =
-            `This matches an existing department: "${match}". Please select it from the list.`;
+            `This matches an existing department: "${match}". ` +
+            "Please select it from the list.";
 
-        warning.style.display = 'block';
-        input.classList.add('is-invalid');
+        warning.style.display = "block";
+        input.classList.add("is-invalid");
     } else {
-        warning.style.display = 'none';
-        input.classList.remove('is-invalid');
+        warning.style.display = "none";
+        input.classList.remove("is-invalid");
     }
 }
+
+    
 function escapeHtml(value) {
     if (value === null || value === undefined) {
         return '';
