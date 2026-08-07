@@ -334,6 +334,7 @@ def index():
 
 
 # ---------------- SESSION ----------------
+# ---------------- SESSION ----------------
 @app.route('/session/start', methods=['POST'])
 @login_required
 def session_start():
@@ -341,68 +342,108 @@ def session_start():
 
     user = sanitize(d.get('user'))
     emp = sanitize(d.get('empId'))
+
     if not user or not emp:
-        return jsonify({"ok": False, "error": "Employee Name and ID are mandatory."}), 400
+        return jsonify({
+            "ok": False,
+            "error": "Employee Name and ID are mandatory."
+        }), 400
 
     device = sanitize(d.get('device'))
+
     if device == 'Other':
-        device = sanitize_title(d.get('otherDevice')) or 'Other'
+        device = sanitize_title(
+            d.get('otherDevice')
+        ) or 'Other'
 
     dept = sanitize(d.get('dept'))
+
     if dept == 'Other':
         other_dept = sanitize(d.get('otherDept'))
+
         if not other_dept:
-            return jsonify({"ok": False, "error": "Please specify a department."}), 400
+            return jsonify({
+                "ok": False,
+                "error": "Please specify a department."
+            }), 400
 
         other_dept_upper = other_dept.upper()
 
-        # Resolve known aliases (e.g. "HR" -> "Employee Services") first
-        canonical = DEPARTMENT_ALIASES.get(other_dept_upper)
+        canonical = DEPARTMENT_ALIASES.get(
+            other_dept_upper
+        )
 
-        existing_upper = [x.upper() for x in DEPARTMENTS if x != 'Other']
+        existing_upper = [
+            department.upper()
+            for department in DEPARTMENTS
+            if department != 'Other'
+        ]
 
         if canonical:
             return jsonify({
                 "ok": False,
-                "error": f"'{other_dept_upper}' matches an existing department ('{canonical}'). Please select it instead."
+                "error": (
+                    f"'{other_dept_upper}' matches an existing "
+                    f"department ('{canonical}'). "
+                    "Please select it instead."
+                )
             }), 400
 
         if other_dept_upper in existing_upper:
             return jsonify({
                 "ok": False,
-                "error": f"'{other_dept_upper}' already exists in the department list. Please select it instead."
+                "error": (
+                    f"'{other_dept_upper}' already exists in the "
+                    "department list. Please select it instead."
+                )
             }), 400
 
         dept = other_dept_upper
 
     status = sanitize(d.get('status'))
+
     if status not in STATUSES:
-        return jsonify({"ok": False, "error": "Invalid status."}), 400
+        return jsonify({
+            "ok": False,
+            "error": "Invalid status."
+        }), 400
 
     valid_substatuses = SUBSTATUS_RULES.get(status, [])
 
     if status == "Loaned":
         substatus = "Service Unit"
+
     elif status == "Repair":
         substatus = "Ongoing"
+
     elif status == "In Use":
         substatus = "Active"
+
     elif valid_substatuses:
         substatus = sanitize(d.get('substatus'))
+
         if substatus not in valid_substatuses:
             return jsonify({
                 "ok": False,
                 "error": (
                     f"Substatus is required for {status}. "
-                    f"Choose one of: {', '.join(valid_substatuses)}."
+                    f"Choose one of: "
+                    f"{', '.join(valid_substatuses)}."
                 )
             }), 400
+
     else:
         substatus = None
 
-        base = device if device in DEVICE_IDENTIFIER_RULES else 'Other'
+    base = (
+        device
+        if device in DEVICE_IDENTIFIER_RULES
+        else 'Other'
+    )
 
-    scan_mode = sanitize(d.get('scanMode')) or "Single"
+    scan_mode = sanitize(
+        d.get('scanMode')
+    ) or "Single"
 
     if scan_mode not in ["Single", "Multiple"]:
         return jsonify({
@@ -424,7 +465,10 @@ def session_start():
         "end": sanitize(d.get('end')),
         "notes": sanitize(d.get('notes'), 1000),
         "image_data": None,
-        "identifiers": DEVICE_IDENTIFIER_RULES.get(base, [])
+        "identifiers": DEVICE_IDENTIFIER_RULES.get(
+            base,
+            []
+        )
     }
 
     return jsonify({
@@ -436,9 +480,14 @@ def session_start():
             "dept": dept,
             "status": status,
             "substatus": substatus,
-            "scanMode": flask_session['scan_cfg']['scanMode'],
-            "requiredFields": STATUS_FIELD_RULES.get(status, []),
-            "identifiers": flask_session['scan_cfg']['identifiers']
+            "scanMode": scan_mode,
+            "requiredFields": STATUS_FIELD_RULES.get(
+                status,
+                []
+            ),
+            "identifiers": flask_session['scan_cfg'][
+                'identifiers'
+            ]
         }
     })
 
