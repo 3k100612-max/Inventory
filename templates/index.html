@@ -748,7 +748,11 @@ let scanner,
     pendingIdentifiers = [],
     pendingReason = null,
     allowNewRecord = false,
-    latestDatabaseRecord = null;
+    latestDatabaseRecord = null,
+    editModalInstance,
+    editOriginalStatus = null,
+    scanInProgress = false;
+
 
 
 const EXISTING_DEPARTMENTS = {{ departments | tojson }};
@@ -997,6 +1001,21 @@ async function confirmSetup() {
 }
 
 async function onSerialScanned(text) {
+    if (scanInProgress) {
+        return;
+    }
+
+    const code = cleanCode(text);
+
+    if (!code) {
+        if (scanner) {
+            scanner.resume();
+        }
+        return;
+    }
+
+    scanInProgress = true;
+
     try {
         const response = await fetch('/scan/check', {
             method: 'POST',
@@ -1004,7 +1023,7 @@ async function onSerialScanned(text) {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                code: text
+                code: code
             })
         });
 
@@ -1017,90 +1036,97 @@ async function onSerialScanned(text) {
                 "Scan rejected."
             );
 
-            if (scanner) {
+            scanInProgress = false;
+
+            if (cfg.scanMode === "Multiple" && scanner) {
                 scanner.resume();
             }
 
             return;
         }
 
-        pendingReason = null;
-        latestDatabaseRecord = result.latest || null;
-        allowNewRecord = false;
-
         /*
-         * Existing code:
-         * Display the database information without changing it.
+         * Existing serial:
+         * Open the edit modal using the latest row.
          */
-        if (result.exists) {
-            showDatabaseInformation(
+        if (result.exists && result.latest) {
+            await openExistingRecordModal(
                 result.latest,
                 result.history
             );
+
+            return;
         }
 
         /*
-         * New code:
-         * Ask for confirmation before creating the first event.
+         * Unknown serial:
+         * Preserve the existing Add Record workflow.
          */
         if (!result.exists) {
             const shouldAdd = await showConfirm(
-                result.confirmMessage
+                "Serial number not found in the database. " +
+                "Would you like to add it as a new record?"
             );
 
-            if (!shouldAdd) {
-                if (scanner) {
-                    scanner.resume();
-                }
+            if (shouldAdd) {
+                document.getElementById("a_code").value =
+                    result.code;
+
+                const addModalElement =
+                    document.getElementById("addRecordModal");
+
+                bootstrap.Modal
+                    .getOrCreateInstance(addModalElement)
+                    .show();
+
+                // The Add Record modal now owns the workflow.
+                scanInProgress = false;
 
                 return;
             }
 
-            allowNewRecord = true;
+            handleUnknownSerial();
         }
-
-        /*
-         * Warn when this new selected status is Repair
-         * and the asset already has two or more Repair events.
-         */
-        if (result.flag === 'red') {
-            const continueRepair = await showConfirm(
-                `This asset already has at least two Repair events. ` +
-                `Saving this event will flag the asset. Continue?`
-            );
-
-            if (!continueRepair) {
-                if (scanner) {
-                    scanner.resume();
-                }
-
-                return;
-            }
-        }
-
-        document.getElementById('scan_serial').value =
-            result.code;
-
-        document.getElementById('btn_manual_save').disabled =
-            false;
-
-        pendingIdentifiers =
-            result.nextIdentifiers || [];
-
-        promptModal.show();
 
     } catch (error) {
-        console.error('Scan lookup error:', error);
+        console.error("Scan lookup error:", error);
 
         alert(
             "Network error while checking the database."
         );
+
+        scanInProgress = false;
 
         if (scanner) {
             scanner.resume();
         }
     }
 }
+
+function handleUnknownSerial() {
+    scanInProgress = false;
+
+    if (cfg.scanMode === "Multiple") {
+        resetScanFields();
+
+        if (scanner) {
+            scanner.resume();
+        }
+
+        return;
+    }
+
+    if (scanner) {
+        scanner.stop();
+    }
+
+    alert("Serial number not found in the database.");
+
+    setTimeout(() => {
+        location.reload();
+    }, 500);
+}
+
 
 
 // ============================================================
@@ -1152,10 +1178,22 @@ class MultiFormatScanner {
             { facingMode: "environment" },
             this._buildConfig(),
             (decodedText) => {
-                if (this.paused || this.locked) return;
+                if (
+                    this.paused ||
+                    this.locked ||
+                    scanInProgress ||
+                    (
+                        editModalInstance &&
+                        editModalInstance._isShown
+                    )
+                ) {
+                    return;
+                }
+            
                 this.locked = true;
                 this.onResult(cleanCode(decodedText));
             },
+
             () => { /* per-frame no-match: ignore */ }
         );
 
@@ -1306,10 +1344,32 @@ async function startScanner() {
 
     try {
         if (!scanner) {
-            scanner = new MultiFormatScanner('reader', (text) => {
-                if (activeFieldId === 'scan_serial') { scanner.pause(); onSerialScanned(text); }
-                else { document.getElementById(activeFieldId).value = text; scanner.resume(); }
-            });
+           scanner = new MultiFormatScanner(
+    "reader",
+    (text) => {
+        if (scanInProgress) {
+            return;
+        }
+
+        if (
+            editModalInstance &&
+            editModalInstance._isShown
+        ) {
+            return;
+        }
+
+        if (activeFieldId === "scan_serial") {
+            scanner.pause();
+            onSerialScanned(text);
+        } else {
+            document.getElementById(activeFieldId)
+                .value = text;
+
+            scanner.resume();
+        }
+    }
+);
+
         }
         await scanner.start();
         document.getElementById("scan_engine_status").textContent = "Camera ready";
@@ -1440,7 +1500,7 @@ async function deleteSingle(id) {
     }
 }
 
-let editModalInstance, editOriginalStatus = null;
+
 
 function updateEditSubstatusOptions() {
     const status = document.getElementById('e_status').value;
@@ -1475,6 +1535,108 @@ function updateEditSubstatusOptions() {
 
     reasonGroup.style.display = (editOriginalStatus === "Retired" && status === "In Use") ? 'block' : 'none';
 }
+
+async function openExistingRecordModal(latest, history) {
+    if (!latest || !latest.id) {
+        alert("The existing record could not be loaded.");
+
+        scanInProgress = false;
+
+        if (scanner) {
+            scanner.resume();
+        }
+
+        return;
+    }
+
+    // Keep the camera paused while the modal is open.
+    if (scanner) {
+        scanner.pause();
+        scanner.locked = true;
+    }
+
+    editOriginalStatus = latest.status;
+
+    document.getElementById("e_id").value =
+        latest.id;
+
+    document.getElementById("e_code").value =
+        latest.code || "";
+
+    document.getElementById("e_person_name").value =
+        latest.person_name || "";
+
+    document.getElementById("e_employee_id").value =
+        latest.employee_id || "";
+
+    document.getElementById("e_imei").value =
+        latest.imei || "";
+
+    document.getElementById("e_mac_address").value =
+        latest.mac_address || "";
+
+    document.getElementById("e_email").value =
+        latest.email || "";
+
+    document.getElementById("e_status").value =
+        latest.status || "In Stock";
+
+    document.getElementById("e_reason").value =
+        latest.reason || "";
+
+    document.getElementById("e_purchase_date").value =
+        latest.purchase_date || "";
+
+    document.getElementById("e_return_date").value =
+        latest.return_date || "";
+
+    document.getElementById("e_end_of_cycle").value =
+        latest.end_of_cycle || "";
+
+    document.getElementById("e_notes").value =
+        latest.notes || "";
+
+    if (isStandardDeviceType(latest.device_type)) {
+        document.getElementById("e_device").value =
+            latest.device_type;
+
+        document.getElementById("e_other_device").value = "";
+    } else {
+        document.getElementById("e_device").value = "Other";
+
+        document.getElementById("e_other_device").value =
+            latest.device_type || "";
+    }
+
+    if (isStandardDepartment(latest.department)) {
+        setSelectValuePreserveCustom(
+            "e_department",
+            latest.department
+        );
+
+        document.getElementById(
+            "e_other_department"
+        ).value = "";
+
+    } else {
+        document.getElementById(
+            "e_department"
+        ).value = "Other";
+
+        document.getElementById(
+            "e_other_department"
+        ).value = latest.department || "";
+    }
+
+    updateEditSubstatusOptions();
+    toggleEditOtherFields();
+
+    document.getElementById("e_substatus").value =
+        latest.substatus || "";
+
+    editModalInstance.show();
+}
+
 
 async function openEditModal(scanId) {
     try {
@@ -1527,32 +1689,53 @@ async function openEditModal(scanId) {
 }
 
 async function saveEditData() {
-    const status = document.getElementById('e_status').value;
+    const id = document.getElementById("e_id").value;
+    const status = document.getElementById("e_status").value;
 
-    const selectedDevice = document.getElementById('e_device').value;
-    const otherDevice = document.getElementById('e_other_device').value.trim();
+    const selectedDevice =
+        document.getElementById("e_device").value;
 
-    const selectedDepartment = document.getElementById('e_department').value;
-    const otherDepartment = document.getElementById('e_other_department').value.trim();
+    const otherDevice =
+        document.getElementById("e_other_device")
+            .value
+            .trim();
 
-    if (selectedDevice === 'Other' && !otherDevice) {
+    const selectedDepartment =
+        document.getElementById("e_department").value;
+
+    const otherDepartment =
+        document.getElementById("e_other_department")
+            .value
+            .trim();
+
+    if (!id) {
+        alert("No record selected.");
+        return;
+    }
+
+    if (
+        selectedDevice === "Other" &&
+        !otherDevice
+    ) {
         alert("Please specify the device type.");
-        document.getElementById('e_other_device').focus();
         return;
     }
 
-    if (selectedDepartment === 'Other' && !otherDepartment) {
+    if (
+        selectedDepartment === "Other" &&
+        !otherDepartment
+    ) {
         alert("Please specify the department.");
-        document.getElementById('e_other_department').focus();
         return;
     }
 
-    const departmentMatch = getDepartmentMatch(otherDepartment);
-
-    if (selectedDepartment === 'Other' && departmentMatch) {
+    if (
+        selectedDepartment === "Other" &&
+        getDepartmentMatch(otherDepartment)
+    ) {
         alert(
-            `"${otherDepartment}" matches the existing department "${departmentMatch}". ` +
-            "Please select it from the list."
+            `"${otherDepartment}" matches an existing ` +
+            "department. Please select it from the list."
         );
         return;
     }
@@ -1560,61 +1743,174 @@ async function saveEditData() {
     if (
         editOriginalStatus === "Retired" &&
         status === "In Use" &&
-        !document.getElementById('e_reason').value.trim()
+        !document.getElementById("e_reason")
+            .value
+            .trim()
     ) {
-        alert("A reason is required to reactivate a Retired unit.");
+        alert(
+            "A reason is required to reactivate " +
+            "a Retired unit."
+        );
         return;
     }
 
     const payload = {
-        code: document.getElementById('e_code').value,
+        code: document.getElementById("e_code")
+            .value
+            .trim(),
 
-        // Store the specified text, not "Other".
-        device_type: selectedDevice === 'Other' ? otherDevice : selectedDevice,
-        department: selectedDepartment === 'Other'
-            ? otherDepartment.toUpperCase()
-            : selectedDepartment,
+        device_type:
+            selectedDevice === "Other"
+                ? otherDevice
+                : selectedDevice,
 
-        person_name: document.getElementById('e_person_name').value,
-        employee_id: document.getElementById('e_employee_id').value,
-        imei: document.getElementById('e_imei').value,
-        mac_address: document.getElementById('e_mac_address').value,
+        department:
+            selectedDepartment === "Other"
+                ? otherDepartment.toUpperCase()
+                : selectedDepartment,
+
+        person_name:
+            document.getElementById("e_person_name").value,
+
+        employee_id:
+            document.getElementById("e_employee_id").value,
+
+        imei:
+            document.getElementById("e_imei").value,
+
+        mac_address:
+            document.getElementById("e_mac_address").value,
+
+        email:
+            document.getElementById("e_email").value,
 
         status: status,
-        substatus: document.getElementById('e_substatus').value,
-        reason: document.getElementById('e_reason').value,
 
-        purchase_date: document.getElementById('e_purchase_date').value,
-        return_date: document.getElementById('e_return_date').value,
-        end_of_cycle: document.getElementById('e_end_of_cycle').value,
+        substatus:
+            document.getElementById("e_substatus").value,
 
-        email: document.getElementById('e_email').value,
-        notes: document.getElementById('e_notes').value
+        reason:
+            document.getElementById("e_reason").value,
+
+        purchase_date:
+            document.getElementById("e_purchase_date").value,
+
+        return_date:
+            document.getElementById("e_return_date").value,
+
+        end_of_cycle:
+            document.getElementById("e_end_of_cycle").value,
+
+        notes:
+            document.getElementById("e_notes").value
     };
 
-    const id = document.getElementById('e_id').value;
+    const saveButton =
+        document.querySelector(
+            "#editModal .modal-footer .btn-primary"
+        );
+
+    if (saveButton) {
+        saveButton.disabled = true;
+    }
 
     try {
-        const res = await fetch(`/scan/${id}/edit`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        });
+        const response = await fetch(
+            `/scan/${id}/update-existing`,
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(payload)
+            }
+        );
 
-        const data = await res.json();
+        const result = await response.json();
 
-        if (data.status === "success") {
-            location.reload();
-        } else {
-            alert(data.message || "Save failed.");
+        if (
+            !response.ok ||
+            result.status !== "success"
+        ) {
+            alert(result.message || "Update failed.");
+
+            scanInProgress = false;
+
+            if (scanner) {
+                scanner.locked = false;
+                scanner.resume();
+            }
+
+            return;
         }
-    } catch (err) {
-        console.error(err);
-        alert("Network error while saving.");
+
+        editModalInstance.hide();
+
+        const toast =
+            document.getElementById("save_toast");
+
+        toast.textContent =
+            "Record updated successfully.";
+
+        toast.className =
+            "alert alert-success shadow";
+
+        toast.style.display = "block";
+
+        setTimeout(() => {
+            toast.style.display = "none";
+        }, 2000);
+
+        if (cfg.scanMode === "Multiple") {
+            resetScanFields();
+
+            scanInProgress = false;
+
+            setTimeout(() => {
+                if (scanner) {
+                    scanner.locked = false;
+                    scanner.resume();
+                }
+            }, 300);
+
+            return;
+        }
+
+        // Single Scan mode.
+        scanInProgress = false;
+
+        if (scanner) {
+            scanner.stop();
+        }
+
+        setTimeout(() => {
+            location.reload();
+        }, 1000);
+
+    } catch (error) {
+        console.error(
+            "Existing record update error:",
+            error
+        );
+
+        alert(
+            "Network error while updating the record."
+        );
+
+        scanInProgress = false;
+
+        if (scanner) {
+            scanner.locked = false;
+            scanner.resume();
+        }
+
+    } finally {
+        if (saveButton) {
+            saveButton.disabled = false;
+        }
     }
 }
+
 
 
 let currentSort = { key: null, asc: true };
@@ -2138,29 +2434,53 @@ function showDatabaseInformation(latest, history) {
     databaseInfoModal.show();
 }
 function resetScanFields() {
-    document.getElementById('scan_serial').value = '';
-    document.getElementById('scan_imei').value = '';
-    document.getElementById('scan_mac').value = '';
+    document.getElementById("scan_serial").value = "";
+    document.getElementById("scan_imei").value = "";
+    document.getElementById("scan_mac").value = "";
 
-    activeFieldId = 'scan_serial';
+    activeFieldId = "scan_serial";
 
     document.querySelectorAll(
-        '#scan_serial, #scan_imei, #scan_mac'
+        "#scan_serial, #scan_imei, #scan_mac"
     ).forEach(input => {
-        input.classList.remove('active-scan-field');
+        input.classList.remove("active-scan-field");
     });
 
-    document.getElementById('scan_serial')
-        .classList.add('active-scan-field');
+    document.getElementById("scan_serial")
+        .classList.add("active-scan-field");
 
-    document.getElementById('btn_manual_save').disabled =
-        true;
+    document.getElementById(
+        "btn_manual_save"
+    ).disabled = true;
 
     pendingIdentifiers = [];
     pendingReason = null;
     latestDatabaseRecord = null;
     allowNewRecord = false;
 }
+
+
+document.getElementById("editModal")
+    .addEventListener(
+        "hidden.bs.modal",
+        () => {
+            /*
+             * If the record was saved in Multiple mode,
+             * saveEditData() already handles the reset.
+             */
+            if (
+                !scanInProgress &&
+                cfg.scanMode === "Multiple"
+            ) {
+                resetScanFields();
+
+                if (scanner) {
+                    scanner.locked = false;
+                    scanner.resume();
+                }
+            }
+        }
+    );
 
     
 </script>
