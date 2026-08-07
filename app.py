@@ -402,23 +402,31 @@ def session_start():
 
     base = device if device in DEVICE_IDENTIFIER_RULES else 'Other'
 
-    flask_session['scan_cfg'] = {
-        "user": user,
-        "empId": emp,
-        "device": device,
-        "dept": dept,
-        "status": status,
-        "substatus": substatus,
-        "scanMode": sanitize(d.get('scanMode')) or "Single",
-        "email": sanitize(d.get('email'), 120),
-        "date": sanitize(d.get('date')),
-        "purchase": sanitize(d.get('purchase')),
-        "end": sanitize(d.get('end')),
-        "notes": sanitize(d.get('notes'), 1000),
-        # Do NOT store large base64 images in the session/cookie.
-        "image_data": None,
-        "identifiers": DEVICE_IDENTIFIER_RULES.get(base, [])
-    }
+    scan_mode = sanitize(d.get('scanMode')) or "Single"
+
+if scan_mode not in ["Single", "Multiple"]:
+    return jsonify({
+        "ok": False,
+        "error": "Invalid scan mode."
+    }), 400
+
+flask_session['scan_cfg'] = {
+    "user": user,
+    "empId": emp,
+    "device": device,
+    "dept": dept,
+    "status": status,
+    "substatus": substatus,
+    "scanMode": scan_mode,
+    "email": sanitize(d.get('email'), 120),
+    "date": sanitize(d.get('date')),
+    "purchase": sanitize(d.get('purchase')),
+    "end": sanitize(d.get('end')),
+    "notes": sanitize(d.get('notes'), 1000),
+    "image_data": None,
+    "identifiers": DEVICE_IDENTIFIER_RULES.get(base, [])
+}
+
 
     return jsonify({
         "ok": True,
