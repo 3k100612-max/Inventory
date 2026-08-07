@@ -398,7 +398,7 @@ def session_start():
                 )
             }), 400
 
-        dept = other_dept_upper
+        dept = other_dept_strip()
 
     status = sanitize(d.get('status'))
 
@@ -929,6 +929,159 @@ def update_existing_scan(scan_id):
             "message": "Unable to update the record."
         }), 500
 
+# ---------------- SCAN: UPDATE EXISTING LATEST RECORD ----------------
+@app.route('/scan/<int:scan_id>/update-existing', methods=['POST'])
+@login_required
+def update_existing_scan(scan_id):
+    scan = InventoryScan.query.get(scan_id)
+
+    if not scan:
+        return jsonify({
+            "status": "error",
+            "message": "Record not found."
+        }), 404
+
+    data = request.get_json() or {}
+
+    code = sanitize(data.get("code"), 100)
+
+    if not code:
+        return jsonify({
+            "status": "error",
+            "message": "Serial / Code is required."
+        }), 400
+
+    if not CODE_PATTERN.fullmatch(code):
+        return jsonify({
+            "status": "error",
+            "message": "Invalid barcode characters."
+        }), 400
+
+    device_type = sanitize(data.get("device_type"), 100)
+    department = sanitize(data.get("department"), 100)
+    status_value = sanitize(data.get("status"), 50)
+
+    if not device_type:
+        return jsonify({
+            "status": "error",
+            "message": "Device type is required."
+        }), 400
+
+    if status_value not in STATUSES:
+        return jsonify({
+            "status": "error",
+            "message": "Invalid status."
+        }), 400
+
+    valid_substatuses = SUBSTATUS_RULES.get(status_value, [])
+    substatus_value = sanitize(data.get("substatus"), 50)
+
+    if status_value == "Loaned":
+        substatus_value = "Service Unit"
+
+    elif status_value == "Repair":
+        substatus_value = "Ongoing"
+
+    elif status_value == "In Use":
+        substatus_value = "Active"
+
+    elif valid_substatuses:
+        if substatus_value not in valid_substatuses:
+            return jsonify({
+                "status": "error",
+                "message": (
+                    f"Substatus must be one of: "
+                    f"{', '.join(valid_substatuses)}."
+                )
+            }), 400
+
+    else:
+        substatus_value = None
+
+    reason = sanitize(data.get("reason"), 500)
+
+    # Preserve the existing reactivation validation rule.
+    if scan.status == "Retired" and status_value == "In Use":
+        if not reason:
+            return jsonify({
+                "status": "error",
+                "message": (
+                    "A reason is required to reactivate "
+                    "a Retired unit."
+                )
+            }), 400
+
+    try:
+        # Update the latest row in place.
+        # This does not create a new history row.
+        scan.code = code
+        scan.device_type = device_type
+        scan.department = department
+        scan.status = status_value
+        scan.substatus = substatus_value
+
+        scan.person_name = sanitize(
+            data.get("person_name"), 100
+        )
+        scan.employee_id = sanitize(
+            data.get("employee_id"), 50
+        )
+        scan.email = sanitize(
+            data.get("email"), 120
+        )
+
+        scan.imei = sanitize(
+            data.get("imei"), 100
+        )
+        scan.mac_address = sanitize(
+            data.get("mac_address"), 100
+        )
+
+        scan.purchase_date = parse_dt(
+            data.get("purchase_date")
+        )
+        scan.return_date = parse_dt(
+            data.get("return_date")
+        )
+        scan.end_of_cycle = parse_dt(
+            data.get("end_of_cycle")
+        )
+
+        scan.reason = reason
+        scan.notes = sanitize(
+            data.get("notes"), 1000
+        )
+
+        scan.is_flagged = compute_is_flagged(
+            code,
+            status_value,
+            exclude_id=scan.id
+        )
+
+        scan.timestamp = datetime.utcnow()
+
+        db.session.commit()
+
+        return jsonify({
+            "status": "success",
+            "message": "Record updated successfully.",
+            "id": scan.id,
+            "is_flagged": bool(scan.is_flagged)
+        })
+
+    except Exception as error:
+        db.session.rollback()
+
+        print(
+            f"Existing record update error: {error}",
+            file=sys.stderr
+        )
+
+        return jsonify({
+            "status": "error",
+            "message": "Unable to update the record."
+        }), 500
+
 
 
 
@@ -1004,7 +1157,7 @@ def add_scan():
 
         # Keep custom department format consistent with your scan session flow.
         if department_upper not in known_departments:
-            department = department_upper
+            department = department_strip()
 
     status_value = sanitize(d.get("status"), 50)
     if status_value not in STATUSES:
@@ -1134,7 +1287,7 @@ def edit_scan(scan_id):
         s.imei = sanitize(d.get('imei'))
         s.mac_address = sanitize(d.get('mac_address'))
         s.device_type = sanitize(d.get('device_type')) or s.device_type
-        s.department = sanitize(d.get('department'))
+        s.department = sanitize(d.get('department'), 100)
         s.status = status_value
         s.substatus = substatus_value
         s.person_name = sanitize(d.get('person_name'))
