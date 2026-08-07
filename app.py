@@ -435,127 +435,257 @@ def session_start():
         }
     })
 
-
 # ---------------- SCAN CHECK ----------------
 @app.route('/scan/check', methods=['POST'])
 @login_required
 def scan_check():
     cfg = flask_session.get('scan_cfg')
-    if not cfg:
-        return jsonify({"ok": False, "error": "No active session. Start a session first."}), 400
 
-    code = sanitize((request.get_json() or {}).get('code'), length=100)
+    if not cfg:
+        return jsonify({
+            "ok": False,
+            "error": "No active session. Start a session first."
+        }), 400
+
+    data = request.get_json() or {}
+
+    code = sanitize(data.get("code"), length=100)
+
     if not code:
-        return jsonify({"ok": False, "accept": False, "reason": "Empty code"}), 200
+        return jsonify({
+            "ok": False,
+            "accept": False,
+            "reason": "Empty code."
+        }), 200
 
     if not CODE_PATTERN.fullmatch(code):
-        return jsonify({"ok": False, "accept": False, "reason": "Invalid barcode characters."}), 200
+        return jsonify({
+            "ok": False,
+            "accept": False,
+            "reason": "Invalid barcode characters."
+        }), 200
 
-    new_status = cfg.get("status")
-    last = InventoryScan.query.filter_by(code=code).order_by(
+    # Retrieve all previous tracking events.
+    # Nothing is modified here.
+    history = InventoryScan.query.filter_by(
+        code=code
+    ).order_by(
         InventoryScan.timestamp.desc()
-    ).first()
+    ).all()
 
-    result = {
+    # Unknown serial.
+    if not history:
+        return jsonify({
+            "ok": True,
+            "accept": True,
+            "exists": False,
+            "code": code,
+            "latest": None,
+            "history": [],
+            "nextIdentifiers": cfg.get("identifiers", []),
+            "confirmMessage": (
+                f"Serial '{code}' was not found in the database. "
+                "Do you want to add it?"
+            ),
+            "requireReason": False,
+            "flag": None
+        })
+
+    latest = history[0]
+
+    repair_count = InventoryScan.query.filter_by(
+        code=code,
+        status="Repair"
+    ).count()
+
+    def serialize_scan(scan):
+        return {
+            "id": scan.id,
+            "code": scan.code,
+            "device_type": scan.device_type or "",
+            "department": scan.department or "",
+            "status": scan.status or "",
+            "substatus": scan.substatus or "",
+            "person_name": scan.person_name or "",
+            "employee_id": scan.employee_id or "",
+            "email": scan.email or "",
+            "imei": scan.imei or "",
+            "mac_address": scan.mac_address or "",
+            "purchase_date": (
+                scan.purchase_date.isoformat()
+                if scan.purchase_date else ""
+            ),
+            "return_date": (
+                scan.return_date.isoformat()
+                if scan.return_date else ""
+            ),
+            "end_of_cycle": (
+                scan.end_of_cycle.isoformat()
+                if scan.end_of_cycle else ""
+            ),
+            "reason": scan.reason or "",
+            "notes": scan.notes or "",
+            "is_flagged": bool(scan.is_flagged),
+            "timestamp": (
+                scan.timestamp.isoformat()
+                if scan.timestamp else ""
+            )
+        }
+
+    return jsonify({
         "ok": True,
         "accept": True,
+        "exists": True,
         "code": code,
+
+        # Latest record is displayed as read-only information.
+        "latest": serialize_scan(latest),
+
+        # All previous events are displayed as history.
+        "history": [
+            serialize_scan(scan)
+            for scan in history
+        ],
+
         "nextIdentifiers": cfg.get("identifiers", []),
         "confirmMessage": None,
         "requireReason": False,
-        "flag": None
-    }
+        "flag": "red" if repair_count >= 2 else None
+    })
 
-    if last:
-        current = last.status
-
-        if current == "In Stock":
-            result["confirmMessage"] = (
-                f"Serial '{code}' was already scanned (In Stock). Save this record again?"
-            )
-        elif current == "Loaned" and new_status == "In Use":
-            result["confirmMessage"] = (
-                f"Serial '{code}' is currently Loaned and has not been returned. "
-                f"It will be updated to In Use. Continue?"
-            )
-        elif current == "In Use" and new_status == "In Use":
-            result["confirmMessage"] = (
-                f"Serial '{code}' is already In Use. Save this record again?"
-            )
-        elif current == "Repair":
-            repair_count = InventoryScan.query.filter_by(
-                code=code, status="Repair"
-            ).count()
-            if repair_count >= 2:
-                result["flag"] = "red"
-                result["confirmMessage"] = (
-                    f"Serial '{code}' will now be tagged as FLAGGED because "
-                    f"this is Repair #{repair_count + 1}. Save anyway?"
-                )
-        elif current == "Retired" and new_status == "In Use":
-            result["requireReason"] = True
-            result["confirmMessage"] = (
-                f"Serial '{code}' is Retired. Provide a reason to reactivate it to In Use."
-            )
-
-    return jsonify(result)
-
-
-# ---------------- SAVE ----------------
+# ---------------- SAVE TRACKING EVENT ----------------
 @app.route('/scanned', methods=['POST'])
 @login_required
 def scanned():
     cfg = flask_session.get('scan_cfg')
+
     if not cfg:
-        return jsonify({"status": "error", "message": "No active session."}), 400
+        return jsonify({
+            "status": "error",
+            "message": "No active session."
+        }), 400
 
-    d = request.get_json() or {}
-    code = sanitize(d.get('code'))
+    data = request.get_json() or {}
+
+    code = sanitize(data.get("code"), length=100)
+
     if not code:
-        return jsonify({"status": "error", "message": "Serial is required."}), 400
+        return jsonify({
+            "status": "error",
+            "message": "Serial is required."
+        }), 400
 
-    reason = sanitize(d.get('reason'), 500)
+    if not CODE_PATTERN.fullmatch(code):
+        return jsonify({
+            "status": "error",
+            "message": "Invalid barcode characters."
+        }), 400
 
-    last = InventoryScan.query.filter_by(code=code).order_by(
+    # This value must be true when the code did not previously exist
+    # and the user approved creating it.
+    allow_new_record = data.get("allowNewRecord") is True
+
+    latest = InventoryScan.query.filter_by(
+        code=code
+    ).order_by(
         InventoryScan.timestamp.desc()
     ).first()
 
-    if last and last.status == "Retired" and cfg["status"] == "In Use" and not reason:
+    # If the code is new, require explicit confirmation.
+    if latest is None and not allow_new_record:
+        return jsonify({
+            "status": "needs_confirmation",
+            "message": (
+                f"Serial '{code}' does not exist. "
+                "Please confirm that you want to add it."
+            )
+        }), 409
+
+    reason = sanitize(data.get("reason"), 500)
+
+    # A reason is required when creating an In Use event
+    # after the latest event was Retired.
+    if (
+        latest
+        and latest.status == "Retired"
+        and cfg["status"] == "In Use"
+        and not reason
+    ):
         return jsonify({
             "status": "error",
-            "message": "A reason is required to reactivate a Retired unit."
+            "message": (
+                "A reason is required to create an In Use "
+                "tracking event for a Retired unit."
+            )
         }), 400
 
-    is_flagged = compute_is_flagged(code, cfg["status"])
+    # Count previous repairs before adding this new event.
+    repair_count = InventoryScan.query.filter_by(
+        code=code,
+        status="Repair"
+    ).count()
+
+    is_flagged = (
+        cfg["status"] == "Repair"
+        and (repair_count + 1) >= 3
+    )
 
     try:
-        s = InventoryScan(
+        # IMPORTANT:
+        # Always INSERT a new row.
+        # Never modify the previous row.
+        tracking_event = InventoryScan(
             code=code,
-            imei=sanitize(d.get("imei")),
-            mac_address=sanitize(d.get("mac_address")),
+
+            imei=sanitize(data.get("imei"), 100),
+            mac_address=sanitize(data.get("mac_address"), 100),
+
+            # These values come from the selected session.
             device_type=cfg["device"],
             department=cfg["dept"],
             status=cfg["status"],
             substatus=cfg["substatus"],
+
             person_name=cfg["user"],
             employee_id=cfg["empId"],
-            email=cfg["email"],
-            return_date=parse_dt(cfg["date"]),
-            purchase_date=parse_dt(cfg["purchase"]),
-            end_of_cycle=parse_dt(cfg["end"]),
-            notes=cfg["notes"],
-            image_data=cfg["image_data"],
+            email=cfg.get("email"),
+
+            return_date=parse_dt(cfg.get("date")),
+            purchase_date=parse_dt(cfg.get("purchase")),
+            end_of_cycle=parse_dt(cfg.get("end")),
+
+            notes=cfg.get("notes"),
+            image_data=cfg.get("image_data"),
+
             reason=reason,
-            is_flagged=is_flagged
+            is_flagged=is_flagged,
+
+            # Explicit timestamp for the new event.
+            timestamp=datetime.utcnow()
         )
-        db.session.add(s)
+
+        db.session.add(tracking_event)
         db.session.commit()
-        return jsonify({"status": "success", "id": s.id, "is_flagged": is_flagged})
 
-    except Exception as e:
+        return jsonify({
+            "status": "success",
+            "id": tracking_event.id,
+            "is_flagged": tracking_event.is_flagged,
+            "tracking_event": True
+        })
+
+    except Exception as error:
         db.session.rollback()
-        return jsonify({"status": "error", "message": str(e)}), 500
 
+        print(
+            f"Tracking event save error: {error}",
+            file=sys.stderr
+        )
+
+        return jsonify({
+            "status": "error",
+            "message": "Unable to save tracking event."
+        }), 500
 
 # ---------------- EDIT: fetch ----------------
 @app.route('/scan/<int:scan_id>', methods=['GET'])
