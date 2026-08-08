@@ -292,6 +292,19 @@ def compute_is_flagged(code, status, exclude_id=None):
     repair_count = query.count()
     return (repair_count + 1) >= 3
 
+def get_repair_count(code):
+    """Return the total number of historical Repair events for a code."""
+    return InventoryScan.query.filter(
+        InventoryScan.code == code,
+        InventoryScan.status == "Repair"
+    ).count()
+
+
+def asset_is_flagged(code):
+    """An asset is flagged after three or more Repair events."""
+    return get_repair_count(code) >= 3
+
+
 
 # ---------------- AUTH / PAGES ----------------
 @app.route('/login', methods=['GET', 'POST'])
@@ -774,6 +787,151 @@ def get_scan(scan_id):
             "is_flagged": s.is_flagged
         }
     })
+# ---------------- ADD: NEW HISTORICAL TRACKING EVENT ----------------
+@app.route('/scan/<int:scan_id>/create-event', methods=['POST'])
+@login_required
+def create_tracking_event(scan_id):
+    """
+    Creates a new tracking event without modifying the previous row.
+    All previous Repair events remain available for counting.
+    """
+
+    previous = InventoryScan.query.get(scan_id)
+
+    if not previous:
+        return jsonify({
+            "status": "error",
+            "message": "Record not found."
+        }), 404
+
+    data = request.get_json() or {}
+
+    code = sanitize(data.get("code"), 100) or previous.code
+    device_type = sanitize(data.get("device_type"), 100)
+    department = sanitize(data.get("department"), 100)
+    status_value = sanitize(data.get("status"), 50)
+
+    if not code:
+        return jsonify({
+            "status": "error",
+            "message": "Serial / Code is required."
+        }), 400
+
+    if not CODE_PATTERN.fullmatch(code):
+        return jsonify({
+            "status": "error",
+            "message": "Invalid barcode characters."
+        }), 400
+
+    if not device_type:
+        return jsonify({
+            "status": "error",
+            "message": "Device type is required."
+        }), 400
+
+    if status_value not in STATUSES:
+        return jsonify({
+            "status": "error",
+            "message": "Invalid status."
+        }), 400
+
+    substatus_value = sanitize(data.get("substatus"), 50)
+    valid_substatuses = SUBSTATUS_RULES.get(status_value, [])
+
+    if status_value == "Loaned":
+        substatus_value = "Service Unit"
+    elif status_value == "Repair":
+        substatus_value = "Ongoing"
+    elif status_value == "In Use":
+        substatus_value = "Active"
+    elif valid_substatuses:
+        if substatus_value not in valid_substatuses:
+            return jsonify({
+                "status": "error",
+                "message": (
+                    f"Substatus must be one of: "
+                    f"{', '.join(valid_substatuses)}."
+                )
+            }), 400
+    else:
+        substatus_value = None
+
+    reason = sanitize(data.get("reason"), 500)
+
+    if (
+        previous.status == "Retired"
+        and status_value == "In Use"
+        and not reason
+    ):
+        return jsonify({
+            "status": "error",
+            "message": (
+                "A reason is required to reactivate "
+                "a Retired unit."
+            )
+        }), 400
+
+    try:
+        # Count previous historical Repair events.
+        previous_repair_count = get_repair_count(code)
+
+        # Include this new event if it is Repair.
+        repair_count = previous_repair_count
+        if status_value == "Repair":
+            repair_count += 1
+
+        flagged = repair_count >= 3
+
+        new_event = InventoryScan(
+            code=code,
+            imei=sanitize(data.get("imei"), 100),
+            mac_address=sanitize(data.get("mac_address"), 100),
+
+            device_type=device_type,
+            department=department,
+            status=status_value,
+            substatus=substatus_value,
+
+            person_name=sanitize(data.get("person_name"), 100),
+            employee_id=sanitize(data.get("employee_id"), 50),
+            email=sanitize(data.get("email"), 120),
+
+            purchase_date=parse_dt(data.get("purchase_date")),
+            return_date=parse_dt(data.get("return_date")),
+            end_of_cycle=parse_dt(data.get("end_of_cycle")),
+
+            reason=reason,
+            notes=sanitize(data.get("notes"), 1000),
+
+            is_flagged=flagged,
+            timestamp=datetime.utcnow()
+        )
+
+        db.session.add(new_event)
+        db.session.commit()
+
+        return jsonify({
+            "status": "success",
+            "message": "Tracking event created successfully.",
+            "id": new_event.id,
+            "repair_count": repair_count,
+            "is_flagged": flagged
+        })
+
+    except Exception as error:
+        db.session.rollback()
+
+        print(
+            f"Create tracking event error: {error}",
+            file=sys.stderr
+        )
+
+        return jsonify({
+            "status": "error",
+            "message": "Unable to create tracking event."
+        }), 500
+
+
 
 # ---------------- SCAN: UPDATE EXISTING LATEST RECORD ----------------
 @app.route('/scan/<int:scan_id>/update-existing', methods=['POST'])
