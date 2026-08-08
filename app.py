@@ -344,7 +344,8 @@ def index():
         device_types=DEVICE_TYPES, departments=DEPARTMENTS,
         statuses=STATUSES, flagged_codes=flagged_codes
     )
-
+  
+ 
 
 # ---------------- SESSION ----------------
 # ---------------- SESSION ----------------
@@ -620,7 +621,9 @@ def scan_check():
         "nextIdentifiers": cfg.get("identifiers", []),
         "confirmMessage": None,
         "requireReason": False,
-        "flag": "red" if repair_count >= 2 else None
+        "repair_count": repair_count,
+        "is_flagged": repair_count >= 3,
+        "flag": "red" if repair_count >= 3 else None
     })
 
 # ---------------- SAVE TRACKING EVENT ----------------
@@ -903,10 +906,20 @@ def create_tracking_event(scan_id):
             reason=reason,
             notes=sanitize(data.get("notes"), 1000),
 
-            is_flagged=flagged,
+            is_flagged=(flagged or bool(previous.is_flagged)),
             timestamp=datetime.utcnow()
         )
-
+        if flagged:
+            InventoryScan.query.filter(
+                InventoryScan.code == code
+            ).update(
+                {InventoryScan.is_flagged: True},
+                synchronize_session=False
+            )
+            
+        flagged, repair_count = refresh_asset_flag(code)
+        new_event.is_flagged = flagged
+        
         db.session.add(new_event)
         db.session.commit()
 
