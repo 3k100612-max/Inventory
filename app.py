@@ -300,9 +300,30 @@ def get_repair_count(code):
     ).count()
 
 
-def asset_is_flagged(code):
-    """An asset is flagged after three or more Repair events."""
-    return get_repair_count(code) >= 3
+def refresh_asset_flag(code):
+    """
+    Recalculate and save the flag for every historical row
+    belonging to the same asset code.
+    """
+
+    repair_count = InventoryScan.query.filter(
+        InventoryScan.code == code,
+        InventoryScan.status == "Repair"
+    ).count()
+
+    flagged = repair_count >= 3
+
+    InventoryScan.query.filter(
+        InventoryScan.code == code
+    ).update(
+        {
+            InventoryScan.is_flagged: flagged
+        },
+        synchronize_session=False
+    )
+
+    return flagged, repair_count
+
 
 def refresh_asset_flag(code):
     """
