@@ -304,6 +304,26 @@ def asset_is_flagged(code):
     """An asset is flagged after three or more Repair events."""
     return get_repair_count(code) >= 3
 
+def refresh_asset_flag(code):
+    """
+    Recalculate and save the flag for every historical row
+    belonging to the same asset code.
+    """
+    repair_count = get_repair_count(code)
+    flagged = repair_count >= 3
+
+    InventoryScan.query.filter(
+        InventoryScan.code == code
+    ).update(
+        {
+            InventoryScan.is_flagged: flagged
+        },
+        synchronize_session=False
+    )
+
+    return flagged, repair_count
+
+
 
 
 # ---------------- AUTH / PAGES ----------------
@@ -880,6 +900,7 @@ def create_tracking_event(scan_id):
 
         # Include this new event if it is Repair.
         repair_count = previous_repair_count
+        
         if status_value == "Repair":
             repair_count += 1
 
@@ -909,13 +930,6 @@ def create_tracking_event(scan_id):
             is_flagged=(flagged or bool(previous.is_flagged)),
             timestamp=datetime.utcnow()
         )
-        if flagged:
-            InventoryScan.query.filter(
-                InventoryScan.code == code
-            ).update(
-                {InventoryScan.is_flagged: True},
-                synchronize_session=False
-            )
             
         flagged, repair_count = refresh_asset_flag(code)
         new_event.is_flagged = flagged
