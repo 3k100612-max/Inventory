@@ -1845,7 +1845,7 @@ async function saveEditData() {
 
     try {
         const response = await fetch(
-            `/scan/${id}/update-event`,
+            `/scan/${id}/create-event`,
             {
                 method: "POST",
                 headers: {
