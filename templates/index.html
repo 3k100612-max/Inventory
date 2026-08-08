@@ -1879,8 +1879,9 @@ async function saveEditData() {
             "save_toast"
         );
 
-        toast.textContent =
-            "Record updated successfully.";
+        toast.textContent = result.is_flagged
+            ? `Record updated. Repair count: ${result.repair_count}. Asset flagged.`
+            : "Record updated successfully.";
 
         toast.className =
             "alert alert-success shadow";
