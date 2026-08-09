@@ -1321,27 +1321,23 @@ async function handlePhotoUpload(event) {
 }
 
 async function startScanner() {
-  document.getElementById('start_section').style.display = 'none';
-    document.getElementById('session_info').style.display = 'block';
-    document.getElementById('scanner_section').style.display = 'block';
+  document.getElementById('ui_user').textContent =
+    'Ready to scan';
 
-    document.getElementById('ui_user').textContent =
-        cfg.user || 'Configuration pending';
+document.getElementById('ui_empid').textContent = '';
 
-    document.getElementById('ui_empid').textContent =
-        cfg.empId || '-';
+document.getElementById('ui_status').textContent =
+    'Existing records';
 
-    document.getElementById('ui_status').textContent =
-        cfg.status || 'Not selected';
+document.getElementById('ui_dept').textContent =
+    'Edit after scanning';
 
-    document.getElementById('ui_dept').textContent =
-        cfg.dept || 'Not selected';
+document.getElementById('ui_device').textContent =
+    'Inventory';
 
-    document.getElementById('ui_device').textContent =
-        cfg.device || 'Not selected';
+document.getElementById('ui_mode').textContent =
+    cfg.scanMode + ' Mode';
 
-    document.getElementById('ui_mode').textContent =
-        cfg.scanMode + ' Mode';
 
     try {
         if (!scanner) {
