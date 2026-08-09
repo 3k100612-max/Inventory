@@ -693,14 +693,6 @@ def scan_check():
 @app.route('/scanned', methods=['POST'])
 @login_required
 def scanned():
-    cfg = flask_session.get('scan_cfg')
-
-    if not cfg:
-        return jsonify({
-            "status": "error",
-            "message": "No active session."
-        }), 400
-
     data = request.get_json() or {}
 
     code = sanitize(data.get("code"), length=100)
@@ -717,111 +709,78 @@ def scanned():
             "message": "Invalid barcode characters."
         }), 400
 
-    # This value must be true when the code did not previously exist
-    # and the user approved creating it.
-    allow_new_record = data.get("allowNewRecord") is True
-
-    latest = InventoryScan.query.filter_by(
+    history = InventoryScan.query.filter_by(
         code=code
     ).order_by(
         InventoryScan.timestamp.desc()
-    ).first()
+    ).all()
 
-    # If the code is new, require explicit confirmation.
-    if latest is None and not allow_new_record:
+    # Unknown barcode:
+    # Do not create it here. The user must use Add Record.
+    if not history:
         return jsonify({
-            "status": "needs_confirmation",
+            "status": "not_found",
+            "exists": False,
+            "code": code,
             "message": (
-                f"Serial '{code}' does not exist. "
-                "Please confirm that you want to add it."
+                f"Serial '{code}' was not found. "
+                "Please use the Add Record button."
             )
-        }), 409
+        }), 404
 
-    reason = sanitize(data.get("reason"), 500)
+    latest = history[0]
 
-    # A reason is required when creating an In Use event
-    # after the latest event was Retired.
-    if (
-        latest
-        and latest.status == "Retired"
-        and cfg["status"] == "In Use"
-        and not reason
-    ):
-        return jsonify({
-            "status": "error",
-            "message": (
-                "A reason is required to create an In Use "
-                "tracking event for a Retired unit."
-            )
-        }), 400
-
-    # Count previous repairs before adding this new event.
     repair_count = InventoryScan.query.filter_by(
         code=code,
         status="Repair"
     ).count()
 
-    is_flagged = (
-        cfg["status"] == "Repair"
-        and (repair_count + 1) >= 3
-    )
+    def serialize_scan(scan):
+        return {
+            "id": scan.id,
+            "code": scan.code,
+            "device_type": scan.device_type or "",
+            "department": scan.department or "",
+            "status": scan.status or "",
+            "substatus": scan.substatus or "",
+            "person_name": scan.person_name or "",
+            "employee_id": scan.employee_id or "",
+            "email": scan.email or "",
+            "imei": scan.imei or "",
+            "mac_address": scan.mac_address or "",
+            "purchase_date": (
+                scan.purchase_date.isoformat()
+                if scan.purchase_date else ""
+            ),
+            "return_date": (
+                scan.return_date.isoformat()
+                if scan.return_date else ""
+            ),
+            "end_of_cycle": (
+                scan.end_of_cycle.isoformat()
+                if scan.end_of_cycle else ""
+            ),
+            "reason": scan.reason or "",
+            "notes": scan.notes or "",
+            "is_flagged": bool(scan.is_flagged),
+            "timestamp": (
+                scan.timestamp.isoformat()
+                if scan.timestamp else ""
+            )
+        }
 
-    try:
-        # IMPORTANT:
-        # Always INSERT a new row.
-        # Never modify the previous row.
-        tracking_event = InventoryScan(
-            code=code,
-
-            imei=sanitize(data.get("imei"), 100),
-            mac_address=sanitize(data.get("mac_address"), 100),
-
-            # These values come from the selected session.
-            device_type=cfg["device"],
-            department=cfg["dept"],
-            status=cfg["status"],
-            substatus=cfg["substatus"],
-
-            person_name=cfg["user"],
-            employee_id=cfg["empId"],
-            email=cfg.get("email"),
-
-            return_date=parse_dt(cfg.get("date")),
-            purchase_date=parse_dt(cfg.get("purchase")),
-            end_of_cycle=parse_dt(cfg.get("end")),
-
-            notes=cfg.get("notes"),
-            image_data=cfg.get("image_data"),
-
-            reason=reason,
-            is_flagged=is_flagged,
-
-            # Explicit timestamp for the new event.
-            timestamp=datetime.utcnow()
-        )
-
-        db.session.add(tracking_event)
-        db.session.commit()
-
-        return jsonify({
-            "status": "success",
-            "id": tracking_event.id,
-            "is_flagged": tracking_event.is_flagged,
-            "tracking_event": True
-        })
-
-    except Exception as error:
-        db.session.rollback()
-
-        print(
-            f"Tracking event save error: {error}",
-            file=sys.stderr
-        )
-
-        return jsonify({
-            "status": "error",
-            "message": "Unable to save tracking event."
-        }), 500
+    return jsonify({
+        "status": "success",
+        "exists": True,
+        "code": code,
+        "latest": serialize_scan(latest),
+        "history": [
+            serialize_scan(scan)
+            for scan in history
+        ],
+        "repair_count": repair_count,
+        "is_flagged": repair_count >= 3
+    })
 
 # ---------------- EDIT: fetch ----------------
 @app.route('/scan/<int:scan_id>', methods=['GET'])
