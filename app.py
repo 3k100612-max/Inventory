@@ -576,13 +576,10 @@ def session_start():
 @app.route('/scan/check', methods=['POST'])
 @login_required
 def scan_check():
-    cfg = flask_session.get('scan_cfg')
-
-    if not cfg:
-        return jsonify({
-            "ok": False,
-            "error": "No active session. Start a session first."
-        }), 400
+    cfg = flask_session.get('scan_cfg', {
+    "scanMode": "Single",
+    "identifiers": []
+})
 
     data = request.get_json() or {}
 
