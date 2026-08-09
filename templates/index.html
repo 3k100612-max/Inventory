@@ -47,7 +47,8 @@
     <div id="session_info" class="session-info-bar card shadow-sm">
         <div class="row align-items-center">
             <div class="col-md-9">
-                <h5 class="mb-1">Active Session: <span id="ui_user" class="text-primary"></span></span>)</h5>
+                <h5 class="mb-1">Active Session:
+                                  <span id="ui_user" class="text-primary"></span></h5>
                 <div class="d-flex gap-2 flex-wrap">
                     <span id="ui_status" class="badge bg-primary"></span>
                     <span id="ui_dept" class="badge bg-secondary"></span>
@@ -86,16 +87,7 @@
                     <label class="small fw-bold text-primary">SERIAL (CAPTURED)</label>
                     <input type="text" id="scan_serial" class="form-control active-scan-field" placeholder="Scan Serial..." readonly>
                 </div>
-                <div class="col-md-4">
-                    <label class="small fw-bold">IMEI (OPTIONAL)</label>
-                    <input type="text" id="scan_imei" class="form-control" placeholder="Not Scanned" readonly>
-                </div>
-                <div class="col-md-4">
-                    <label class="small fw-bold">MAC (OPTIONAL)</label>
-                    <input type="text" id="scan_mac" class="form-control" placeholder="Not Scanned" readonly>
-                </div>
             </div>
-            <button id="btn_manual_save" class="btn btn-success btn-lg w-100 mt-3 fw-bold shadow-sm" onclick="saveData()" disabled>SAVE TO DATABASE</button>
         </div>
     </div>
 
@@ -224,26 +216,6 @@
                             onclick="beginScanMode('Multiple')">
                         Multiple Scan
                     </button>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-
-
-<!-- PROMPT MODAL -->
-<div class="modal fade" id="promptModal" data-bs-backdrop="static" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg">
-            <div class="modal-header bg-dark text-white"><h5 class="modal-title">Serial Captured</h5></div>
-            <div class="modal-body p-4 text-center">
-                <p>Would you like to add more identifiers or save this record now?</p>
-                <div class="d-grid gap-2">
-                    <button class="btn btn-primary py-2 fw-bold" onclick="setNextField('scan_imei')">Scan IMEI</button>
-                    <button class="btn btn-info py-2 fw-bold" onclick="setNextField('scan_mac')">Scan MAC</button>
-                    <hr>
-                    <button class="btn btn-success py-3 fw-bold shadow-sm" onclick="saveData()">Save Record Now</button>
                 </div>
             </div>
         </div>
@@ -778,29 +750,24 @@ function setSelectValuePreserveCustom(selectId, value) {
     select.value = v;
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    promptModal = new bootstrap.Modal(
-        document.getElementById('promptModal')
-    );
-
+document.addEventListener("DOMContentLoaded", () => {
     confirmModalInstance = new bootstrap.Modal(
-        document.getElementById('confirmModal')
+        document.getElementById("confirmModal")
     );
 
     databaseInfoModal = new bootstrap.Modal(
-        document.getElementById('databaseInfoModal')
+        document.getElementById("databaseInfoModal")
     );
 
     editModalInstance = new bootstrap.Modal(
-        document.getElementById('editModal')
+        document.getElementById("editModal")
     );
 
-    toggleUI();
     updateAddSubstatusOptions();
     toggleAddOtherFields();
 
     const scannerStatus =
-        document.getElementById('scan_engine_status');
+        document.getElementById("scan_engine_status");
 
     if (scannerStatus) {
         scannerStatus.textContent =
@@ -809,6 +776,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 : "Scanner failed to load";
     }
 });
+
 
 
 function showConfirm(message, { needsReason = false } = {}) {
@@ -884,10 +852,10 @@ function updateSubstatusOptions(status) {
 }
 async function beginScanMode(scanMode) {
     try {
-        const response = await fetch('/session/start-mode', {
-            method: 'POST',
+        const response = await fetch("/session/start-mode", {
+            method: "POST",
             headers: {
-                'Content-Type': 'application/json'
+                "Content-Type": "application/json"
             },
             body: JSON.stringify({
                 scanMode: scanMode
@@ -897,15 +865,19 @@ async function beginScanMode(scanMode) {
         const result = await response.json();
 
         if (!response.ok || !result.ok) {
-            alert(result.error || 'Unable to start scanning.');
+            alert(
+                result.error ||
+                "Unable to start scanning."
+            );
             return;
         }
 
         cfg = result.config;
 
-        const modeModal = bootstrap.Modal.getInstance(
-            document.getElementById('scanModeModal')
-        );
+        const modeModal =
+            bootstrap.Modal.getInstance(
+                document.getElementById("scanModeModal")
+            );
 
         if (modeModal) {
             modeModal.hide();
@@ -914,10 +886,15 @@ async function beginScanMode(scanMode) {
         await startScanner();
 
     } catch (error) {
-        console.error('Scan mode start error:', error);
-        alert('Unable to start the scanning session.');
+        console.error(
+            "Scan mode start error:",
+            error
+        );
+
+        alert("Unable to start the scanning session.");
     }
 }
+
 
 async function confirmSetup() {
     const selectedStatus = document.querySelector('input[name="status"]:checked').value;
@@ -998,19 +975,23 @@ async function onSerialScanned(text) {
     }
 
     scanInProgress = true;
-    document.getElementById('scan_serial').value = code;
+
+    const serialInput =
+        document.getElementById("scan_serial");
+
+    if (serialInput) {
+        serialInput.value = code;
+    }
+
     if (scanner) {
         scanner.pause();
     }
-    const setupModal = bootstrap.Modal.getOrCreateInstance(
-        document.getElementById('setupModal')
-    );
-    setupModal.show();
+
     try {
-        const response = await fetch('/scan/check', {
-            method: 'POST',
+        const response = await fetch("/scan/check", {
+            method: "POST",
             headers: {
-                'Content-Type': 'application/json'
+                "Content-Type": "application/json"
             },
             body: JSON.stringify({
                 code: code
@@ -1019,26 +1000,23 @@ async function onSerialScanned(text) {
 
         const result = await response.json();
 
-        if (!response.ok || !result.ok || !result.accept) {
+        if (!response.ok || !result.ok) {
             alert(
                 result.reason ||
                 result.error ||
-                "Scan rejected."
+                "Unable to check barcode."
             );
 
             scanInProgress = false;
 
-            if (cfg.scanMode === "Multiple" && scanner) {
+            if (scanner) {
                 scanner.resume();
             }
 
             return;
         }
 
-        /*
-         * Existing serial:
-         * Open the edit modal using the latest row.
-         */
+        // Existing barcode: open the edit form.
         if (result.exists && result.latest) {
             await openExistingRecordModal(
                 result.latest,
@@ -1047,58 +1025,40 @@ async function onSerialScanned(text) {
 
             return;
         }
+
+        // Unknown barcode: do not add automatically.
         if (!result.exists) {
-        const shouldAdd = await showConfirm(
-        "Serial number not found in the database. " +
-        "Would you like to add it as a new record?"
-        );
-
-        if (shouldAdd) {
-            document.getElementById("a_code").value =
-            result.code;
-            bootstrap.Modal
-            .getOrCreateInstance(
-                document.getElementById("addRecordModal")
-            )
-            .show();
-        scanInProgress = false;
-        return;
-    }
-}
-
-
-        /*
-         * Unknown serial:
-         * Preserve the existing Add Record workflow.
-         */
-        if (!result.exists) {
-            const shouldAdd = await showConfirm(
-                "Serial number not found in the database. " +
-                "Would you like to add it as a new record?"
+            alert(
+                "This barcode is not in the database. " +
+                "Please use the Add Record button."
             );
 
-            if (shouldAdd) {
-                document.getElementById("a_code").value =
-                    result.code;
+            scanInProgress = false;
 
-                const addModalElement =
-                    document.getElementById("addRecordModal");
+            if (cfg.scanMode === "Multiple") {
+                resetScanFields();
 
-                bootstrap.Modal
-                    .getOrCreateInstance(addModalElement)
-                    .show();
+                if (scanner) {
+                    scanner.resume();
+                }
+            } else {
+                if (scanner) {
+                    scanner.stop();
+                }
 
-                // The Add Record modal now owns the workflow.
-                scanInProgress = false;
-
-                return;
+                setTimeout(() => {
+                    location.reload();
+                }, 500);
             }
 
-            handleUnknownSerial();
+            return;
         }
 
     } catch (error) {
-        console.error("Scan lookup error:", error);
+        console.error(
+            "Scan lookup error:",
+            error
+        );
 
         alert(
             "Network error while checking the database."
@@ -1111,6 +1071,7 @@ async function onSerialScanned(text) {
         }
     }
 }
+
 
 function handleUnknownSerial() {
     scanInProgress = false;
@@ -1340,61 +1301,77 @@ async function handlePhotoUpload(event) {
 }
 
 async function startScanner() {
-  document.getElementById('ui_user').textContent =
-    'Ready to scan';
+    document.getElementById("start_section")
+        .style.display = "none";
 
-document.getElementById('ui_empid').textContent = '';
+    document.getElementById("session_info")
+        .style.display = "block";
 
-document.getElementById('ui_status').textContent =
-    'Existing records';
+    document.getElementById("scanner_section")
+        .style.display = "block";
 
-document.getElementById('ui_dept').textContent =
-    'Edit after scanning';
+    document.getElementById("ui_user")
+        .textContent = "Ready to scan";
 
-document.getElementById('ui_device').textContent =
-    'Inventory';
+    document.getElementById("ui_status")
+        .textContent = "Existing records";
 
-document.getElementById('ui_mode').textContent =
-    cfg.scanMode + ' Mode';
+    document.getElementById("ui_dept")
+        .textContent = "Edit after scanning";
 
+    document.getElementById("ui_device")
+        .textContent = "Inventory";
+
+    document.getElementById("ui_mode")
+        .textContent = `${cfg.scanMode} Mode`;
 
     try {
         if (!scanner) {
-           scanner = new MultiFormatScanner(
-    "reader",
-    (text) => {
-        if (scanInProgress) {
-            return;
+            scanner = new MultiFormatScanner(
+                "reader",
+                (text) => {
+                    if (scanInProgress) {
+                        return;
+                    }
+
+                    if (
+                        editModalInstance &&
+                        editModalInstance._isShown
+                    ) {
+                        return;
+                    }
+
+                    if (
+                        activeFieldId === "scan_serial"
+                    ) {
+                        scanner.pause();
+                        onSerialScanned(text);
+                    }
+                }
+            );
         }
 
-        if (
-            editModalInstance &&
-            editModalInstance._isShown
-        ) {
-            return;
-        }
-
-        if (activeFieldId === "scan_serial") {
-            scanner.pause();
-            onSerialScanned(text);
-        } else {
-            document.getElementById(activeFieldId)
-                .value = text;
-
-            scanner.resume();
-        }
-    }
-);
-
-        }
         await scanner.start();
-        document.getElementById("scan_engine_status").textContent = "Camera ready";
-    } catch (err) {
-        console.error(err);
-        document.getElementById("scan_engine_status").textContent = "Camera unavailable";
-        alert((err && err.message) || "Unable to start the scanner. Check camera permissions.");
+
+        document.getElementById(
+            "scan_engine_status"
+        ).textContent = "Camera ready";
+
+    } catch (error) {
+        console.error(error);
+
+        document.getElementById(
+            "scan_engine_status"
+        ).textContent = "Camera unavailable";
+
+        alert(
+            error.message ||
+            "Unable to start the scanner. " +
+            "Check camera permissions."
+        );
     }
 }
+
 
 function setNextField(id) {
     promptModal.hide();
@@ -1404,95 +1381,7 @@ function setNextField(id) {
     if (scanner) scanner.resume();
 }
 
-async function saveData() {
-    promptModal.hide();
 
-    const payload = {
-        code: document.getElementById('scan_serial').value,
-        imei: document.getElementById('scan_imei').value,
-        mac_address: document.getElementById('scan_mac').value,
-        reason: pendingReason,
-
-        /*
-         * This is the status selected when the session started.
-         * It becomes the status of the new tracking event only.
-         */
-        status: cfg.status,
-
-        /*
-         * Required only when the scanned code did not previously exist.
-         */
-        allowNewRecord: allowNewRecord
-    };
-
-    try {
-        const response = await fetch('/scanned', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        });
-
-        const result = await response.json();
-
-        if (result.status !== 'success') {
-            alert(
-                result.message ||
-                "Unable to save tracking event."
-            );
-
-            if (scanner) {
-                scanner.resume();
-            }
-
-            return;
-        }
-
-        pendingReason = null;
-        allowNewRecord = false;
-        latestDatabaseRecord = null;
-
-        document.getElementById('save_toast').style.display =
-            'block';
-
-        setTimeout(() => {
-            document.getElementById('save_toast').style.display =
-                'none';
-        }, 2000);
-
-        if (cfg.scanMode === 'Multiple') {
-            resetScanFields();
-
-            if (scanner) {
-                scanner.resume();
-            }
-        } else {
-            /*
-             * In Single mode, end the session after one event.
-             */
-            if (scanner) {
-                scanner.stop();
-            }
-
-            location.reload();
-        }
-
-    } catch (error) {
-        console.error('Save tracking event error:', error);
-
-        pendingReason = null;
-        allowNewRecord = false;
-
-        alert(
-            "Network error while saving the tracking event."
-        );
-
-        if (scanner) {
-            scanner.resume();
-        }
-    }
-}
 
 
 async function deleteSingle(id) {
@@ -2493,30 +2382,20 @@ function showDatabaseInformation(latest, history) {
     databaseInfoModal.show();
 }
 function resetScanFields() {
-    document.getElementById("scan_serial").value = "";
-    document.getElementById("scan_imei").value = "";
-    document.getElementById("scan_mac").value = "";
+    const serialInput =
+        document.getElementById("scan_serial");
+
+    if (serialInput) {
+        serialInput.value = "";
+        serialInput.classList.add(
+            "active-scan-field"
+        );
+    }
 
     activeFieldId = "scan_serial";
-
-    document.querySelectorAll(
-        "#scan_serial, #scan_imei, #scan_mac"
-    ).forEach(input => {
-        input.classList.remove("active-scan-field");
-    });
-
-    document.getElementById("scan_serial")
-        .classList.add("active-scan-field");
-
-    document.getElementById(
-        "btn_manual_save"
-    ).disabled = true;
-
-    pendingIdentifiers = [];
-    pendingReason = null;
-    latestDatabaseRecord = null;
-    allowNewRecord = false;
+    scanInProgress = false;
 }
+
 
 
 document.getElementById("editModal")
