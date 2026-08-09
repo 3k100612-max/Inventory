@@ -978,6 +978,42 @@ function updateSubstatusOptions(status) {
         select.appendChild(option);
     });
 }
+async function beginScanMode(scanMode) {
+    try {
+        const response = await fetch('/session/start-mode', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                scanMode: scanMode
+            })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result.ok) {
+            alert(result.error || 'Unable to start scanning.');
+            return;
+        }
+
+        cfg = result.config;
+
+        const modeModal = bootstrap.Modal.getInstance(
+            document.getElementById('scanModeModal')
+        );
+
+        if (modeModal) {
+            modeModal.hide();
+        }
+
+        await startScanner();
+
+    } catch (error) {
+        console.error('Scan mode start error:', error);
+        alert('Unable to start the scanning session.');
+    }
+}
 
 async function confirmSetup() {
     const selectedStatus = document.querySelector('input[name="status"]:checked').value;
@@ -1371,16 +1407,27 @@ async function handlePhotoUpload(event) {
 }
 
 async function startScanner() {
-    document.getElementById('start_section').style.display = 'none';
+  document.getElementById('start_section').style.display = 'none';
     document.getElementById('session_info').style.display = 'block';
     document.getElementById('scanner_section').style.display = 'block';
 
-    document.getElementById('ui_user').textContent = cfg.user;
-    document.getElementById('ui_empid').textContent = cfg.empId;
-    document.getElementById('ui_status').textContent = cfg.status;
-    document.getElementById('ui_dept').textContent = cfg.dept;
-    document.getElementById('ui_device').textContent = cfg.device;
-    document.getElementById('ui_mode').textContent = cfg.scanMode + " Mode";
+    document.getElementById('ui_user').textContent =
+        cfg.user || 'Configuration pending';
+
+    document.getElementById('ui_empid').textContent =
+        cfg.empId || '-';
+
+    document.getElementById('ui_status').textContent =
+        cfg.status || 'Not selected';
+
+    document.getElementById('ui_dept').textContent =
+        cfg.dept || 'Not selected';
+
+    document.getElementById('ui_device').textContent =
+        cfg.device || 'Not selected';
+
+    document.getElementById('ui_mode').textContent =
+        cfg.scanMode + ' Mode';
 
     try {
         if (!scanner) {
