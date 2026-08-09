@@ -386,9 +386,43 @@ def index():
         statuses=STATUSES, flagged_codes=flagged_codes
     )
   
+@app.route('/session/start-mode', methods=['POST'])
+@login_required
+def session_start_mode():
+    data = request.get_json() or {}
+
+    scan_mode = sanitize(data.get('scanMode'))
+
+    if scan_mode not in ["Single", "Multiple"]:
+        return jsonify({
+            "ok": False,
+            "error": "Invalid scan mode."
+        }), 400
+
+    flask_session['scan_cfg'] = {
+        "scanMode": scan_mode,
+        "user": None,
+        "empId": None,
+        "device": None,
+        "dept": None,
+        "status": None,
+        "substatus": None,
+        "email": None,
+        "date": None,
+        "purchase": None,
+        "end": None,
+        "notes": None,
+        "image_data": None,
+        "identifiers": []
+    }
+
+    return jsonify({
+        "ok": True,
+        "config": flask_session['scan_cfg']
+    })
  
 
-# ---------------- SESSION ----------------
+
 # ---------------- SESSION ----------------
 @app.route('/session/start', methods=['POST'])
 @login_required
