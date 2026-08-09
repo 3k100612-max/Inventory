@@ -1047,6 +1047,25 @@ async function onSerialScanned(text) {
 
             return;
         }
+        if (!result.exists) {
+        const shouldAdd = await showConfirm(
+        "Serial number not found in the database. " +
+        "Would you like to add it as a new record?"
+        );
+
+        if (shouldAdd) {
+            document.getElementById("a_code").value =
+            result.code;
+            bootstrap.Modal
+            .getOrCreateInstance(
+                document.getElementById("addRecordModal")
+            )
+            .show();
+        scanInProgress = false;
+        return;
+    }
+}
+
 
         /*
          * Unknown serial:
