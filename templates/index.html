@@ -1069,7 +1069,10 @@ async function confirmSetup() {
         const setupModal = bootstrap.Modal.getInstance(document.getElementById('setupModal'));
         if (setupModal) setupModal.hide();
 
-        await startScanner();
+        if (scanner) {
+            scanner.resume();
+        }
+        scanInProgress = false;
     } catch (error) {
         console.error('Session start error:', error);
         alert('Unable to start the scanning session.');
@@ -1091,7 +1094,14 @@ async function onSerialScanned(text) {
     }
 
     scanInProgress = true;
-
+    document.getElementById('scan_serial').value = code;
+    if (scanner) {
+        scanner.pause();
+    }
+    const setupModal = bootstrap.Modal.getOrCreateInstance(
+        document.getElementById('setupModal')
+    );
+    setupModal.show();
     try {
         const response = await fetch('/scan/check', {
             method: 'POST',
