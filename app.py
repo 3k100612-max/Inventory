@@ -386,12 +386,14 @@ def index():
         statuses=STATUSES, flagged_codes=flagged_codes
     )
   
-@app.route('/session/start-mode', methods=['POST'])
+# ---------------- SCAN MODE SESSION ----------------
+
+@app.route("/session/start-mode", methods=["POST"])
 @login_required
 def session_start_mode():
     data = request.get_json() or {}
 
-    scan_mode = sanitize(data.get('scanMode'))
+    scan_mode = sanitize(data.get("scanMode"))
 
     if scan_mode not in ["Single", "Multiple"]:
         return jsonify({
@@ -399,17 +401,18 @@ def session_start_mode():
             "error": "Invalid scan mode."
         }), 400
 
-    flask_session['scan_cfg'] = {
+    scan_cfg = {
         "scanMode": scan_mode,
         "identifiers": []
     }
 
+    flask_session["scan_cfg"] = scan_cfg
+
     return jsonify({
         "ok": True,
-        "config": {
-            "scanMode": scan_mode
-        }
+        "config": scan_cfg
     })
+
 
  
 
@@ -1574,5 +1577,7 @@ def import_excel():
             os.remove(filepath)
 
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8506)
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8506))
+    app.run(host="0.0.0.0", port=port)
+
