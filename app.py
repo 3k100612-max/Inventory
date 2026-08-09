@@ -401,25 +401,16 @@ def session_start_mode():
 
     flask_session['scan_cfg'] = {
         "scanMode": scan_mode,
-        "user": None,
-        "empId": None,
-        "device": None,
-        "dept": None,
-        "status": None,
-        "substatus": None,
-        "email": None,
-        "date": None,
-        "purchase": None,
-        "end": None,
-        "notes": None,
-        "image_data": None,
         "identifiers": []
     }
 
     return jsonify({
         "ok": True,
-        "config": flask_session['scan_cfg']
+        "config": {
+            "scanMode": scan_mode
+        }
     })
+
  
 
 
